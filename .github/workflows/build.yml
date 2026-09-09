@@ -42,7 +42,11 @@ jobs:
         run: choco install nsis -y
 
       - name: Build installer (setup.exe)
-        run: makensis installer.nsi
+        shell: pwsh
+        run: |
+          $c = Get-Content installer.nsi -Raw -Encoding UTF8
+          [System.IO.File]::WriteAllText("$PWD\installer.nsi", $c, (New-Object System.Text.UTF8Encoding $true))
+          & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" installer.nsi
 
       - name: Package portable zip
         shell: pwsh

@@ -4,6 +4,13 @@ build/darwin/*.icns
 frontend/dist/
 frontend/wailsjs/
 
+# 安装包产物
+CryPtBox-setup.exe
+CryPtBox-portable.zip
+CryPtBox-macos.dmg
+CryPtBox-macos.zip
+CryPtBox-linux-amd64.tar.gz
+
 # 依赖
 frontend/node_modules/
 
