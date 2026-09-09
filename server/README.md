@@ -1,6 +1,6 @@
 # 密匣服务端（CryPtBox Server for fnOS）
 
-CryPtBox 密匣的飞牛 fnOS 服务端，提供密码管理 Web 后台与多端同步 API。与 [CryPtBox 客户端](../README.md)（Windows / macOS）配合使用。
+CryPtBox 密匣的飞牛 fnOS 服务端，提供密码管理 Web 后台与多端同步 API。与 [CryPtBox 客户端](../README.md)（Windows / macOS / Linux，含统信 UOS、银河麒麟等国产系统）配合使用。
 
 ## 功能
 

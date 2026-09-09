@@ -10,9 +10,9 @@
 
 **本地加密 · 跨平台 · 可选云同步的密码管理器**
 
-`Windows` `macOS (Apple Silicon / Intel)` `飞牛 fnOS` `AES-256-GCM` `Wails`
+`Windows` `macOS` `Linux` `统信 UOS / 银河麒麟` `飞牛 fnOS` `AES-256-GCM` `Wails`
 
-> 本仓库包含 **客户端**（本目录，Windows / macOS 原生应用）与 **[服务端](server/README.md)**（`server/` 目录，飞牛 fnOS 应用，提供 Web 管理后台与多端同步 API）。
+> 本仓库包含 **客户端**（本目录，Windows / macOS / Linux 原生应用，含统信 UOS、银河麒麟等国产操作系统）与 **[服务端](server/README.md)**（`server/` 目录，飞牛 fnOS 应用，提供 Web 管理后台与多端同步 API）。
 
 </div>
 
@@ -79,7 +79,7 @@ wails build -platform windows/amd64 -ldflags "-s -w"
 wails build -platform darwin/universal -ldflags "-s -w"
 ```
 
-构建产物在 `build/bin/`。推送 `v*` 标签或手动触发 workflow（`.github/workflows/build.yml`）即可在 GitHub Actions 上自动完成双端构建与发版。
+构建产物在 `build/bin/`。推送 `v*` 标签或手动触发 workflow（`.github/workflows/build.yml`）即可在 GitHub Actions 上自动完成 Windows / macOS / Linux 三端构建与发版。
 
 ## 云同步与服务端
 
@@ -92,6 +92,10 @@ wails build -platform darwin/universal -ldflags "-s -w"
 ## 技术栈
 
 Go + Wails v2 + Vue 3 + vue-i18n + SQLite（modernc 纯 Go 驱动，无 CGO）
+
+## 更新日志
+
+各版本发布说明见 [CHANGELOG.md](CHANGELOG.md)。
 
 <!-- 📸 更多截图占位（后续添加）：
 | 主界面 | 同步设置 |
