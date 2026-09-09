@@ -21,7 +21,7 @@
 ## 特性
 
 - **本地优先**：所有密码条目使用 AES-256-GCM 加密落盘，主密码通过 scrypt 派生密钥，永不存储
-- **跨平台客户端**：一套代码，Windows 与 macOS 原生窗口（Wails），GitHub Actions 自动双端构建
+- **跨平台客户端**：一份代码，Windows / macOS / Linux（含统信 UOS、银河麒麟等国产系统）三端自动构建
 - **一键复制**：网址 / 用户名 / 密码均支持一键复制，点击字段值也可直接复制
 - **托盘常驻（Windows）**：点击关闭按钮最小化到系统托盘后台运行，托盘菜单可快速打开 / 退出；重复启动自动唤起已有窗口
 - **导入导出**：CSV / TXT 双向导入导出，附带导入模板，方便从其他密码管理器迁移
@@ -33,9 +33,12 @@
 
 | 平台 | 文件 | 说明 |
 |------|------|------|
-| Windows x64 | `CryPtBox-windows-amd64.zip` | 解压即用 |
+| Windows x64 | `CryPtBox-windows-amd64.zip` | 解压即用，托盘常驻 |
 | macOS (Universal) | `CryPtBox-macos.dmg` | 含 Intel + Apple Silicon |
 | macOS (Universal) | `CryPtBox-macos.zip` | dmg 的备用格式 |
+| Linux x64 | `CryPtBox-linux-amd64.tar.gz` | 兼容 Ubuntu / Debian / 统信 UOS / 银河麒麟 / 中标麒麟等 x86_64 发行版 |
+
+> 三个平台由**同一份源码目录**自动构建（GitHub Actions 三并行 job），无需为每个系统单独维护代码分支。Linux 包基于 GTK + WebKit2GTK，运行前需安装运行库：Ubuntu/Debian `sudo apt install libgtk-3-0 libwebkit2gtk-4.0-37`；统信 UOS / 银河麒麟一般已预装。
 
 - **正式版**：[Releases](../../releases)（推送 `v*` 标签自动发布）
 - **开发版**：[Actions](../../actions) 每次构建的 Artifacts 中下载
@@ -57,6 +60,7 @@ chmod +x /Applications/CryPtBox.app/Contents/MacOS/CryPtBox
 |------|------|
 | Windows | 可执行文件同目录 `passbook.db` |
 | macOS | `~/Library/Application Support/CryPtBox/passbook.db` |
+| Linux | `~/.config/CryPtBox/passbook.db` |
 
 ## 从源码构建
 

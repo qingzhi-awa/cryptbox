@@ -10,10 +10,10 @@ import (
 )
 
 // dbFilePath 返回数据库文件路径：
-// macOS 放到 ~/Library/Application Support/CryPtBox/（.app 启动时工作目录不可写），
-// 其他平台保持可执行文件同目录（兼容现有 Windows 用户数据）。
+// macOS / Linux 放到用户配置目录（~/.config/CryPtBox/ 等，.app 与系统安装场景工作目录不可写），
+// Windows 保持可执行文件同目录（兼容现有用户数据）。
 func dbFilePath() string {
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS != "windows" {
 		if dir, err := os.UserConfigDir(); err == nil {
 			p := filepath.Join(dir, "CryPtBox")
 			if err := os.MkdirAll(p, 0o700); err == nil {

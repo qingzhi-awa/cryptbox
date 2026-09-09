@@ -86,10 +86,51 @@ jobs:
             CryPtBox-macos.dmg
             CryPtBox-macos.zip
 
+  build-linux:
+    name: Linux (amd64)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GTK / WebKit2GTK build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev gcc pkg-config
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
+
+      - name: Build
+        run: wails build -platform linux/amd64 -ldflags "-s -w"
+
+      - name: Package
+        run: |
+          mkdir -p CryPtBox-linux-amd64
+          cp build/bin/CryPtBox CryPtBox-linux-amd64/
+          cp build/import-template.csv "CryPtBox-linux-amd64/密匣 - 导入模板.csv"
+          chmod +x CryPtBox-linux-amd64/CryPtBox
+          tar -czf CryPtBox-linux-amd64.tar.gz CryPtBox-linux-amd64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CryPtBox-linux-amd64
+          path: CryPtBox-linux-amd64.tar.gz
+
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [ build-windows, build-macos ]
+    needs: [ build-windows, build-macos, build-linux ]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -106,4 +147,5 @@ jobs:
             dist/CryPtBox-windows-amd64.zip
             dist/CryPtBox-macos.dmg
             dist/CryPtBox-macos.zip
+            dist/CryPtBox-linux-amd64.tar.gz
           generate_release_notes: true
