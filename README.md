@@ -10,7 +10,9 @@
 
 **本地加密 · 跨平台 · 可选云同步的密码管理器**
 
-`Windows` `macOS (Apple Silicon / Intel)` `AES-256-GCM` `Wails`
+`Windows` `macOS (Apple Silicon / Intel)` `飞牛 fnOS` `AES-256-GCM` `Wails`
+
+> 本仓库包含 **客户端**（本目录，Windows / macOS 原生应用）与 **[服务端](server/README.md)**（`server/` 目录，飞牛 fnOS 应用，提供 Web 管理后台与多端同步 API）。
 
 </div>
 
@@ -68,6 +70,14 @@ wails build -platform darwin/universal -ldflags "-s -w"
 ```
 
 构建产物在 `build/bin/`。推送 `v*` 标签或手动触发 workflow（`.github/workflows/build.yml`）即可在 GitHub Actions 上自动完成双端构建与发版。
+
+## 云同步与服务端
+
+客户端可连接部署在飞牛 fnOS 上的 **CryPtBox 服务端**（本仓库 `server/` 目录）实现多端同步：
+
+- 支持统一网关访问：FN Connect 内网穿透 / DDNS / 局域网均可打开 Web 后台
+- 支持局域网自动扫描发现服务端
+- 安装包 `cryptbox.fpk` 与构建方法见 [server/README.md](server/README.md)
 
 ## 技术栈
 

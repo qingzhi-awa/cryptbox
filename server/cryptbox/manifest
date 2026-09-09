@@ -1,0 +1,15 @@
+appname               = cryptbox
+version               = 0.2.0
+display_name          = CryPtBox密匣
+desc                  = CryPtBox密匣密码管理,提供密码管理与多端同步。
+platform              = all
+source                = thirdparty
+maintainer            = CryPtBox
+maintainer_url        = https://cryptbox.fnosp.com
+distributor           = 青芷
+distributor_url       = https://07qingzhi.cn
+service_port          = 5201
+checkport             = true
+desktop_uidir         = ui
+desktop_applaunchname = cryptbox.Application
+changelog             = 支持飞牛统一网关访问(不再写死端口,内网穿透可用);卸载向导支持选择是否保留数据;升级前自动备份数据。
