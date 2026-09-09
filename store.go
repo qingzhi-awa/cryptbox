@@ -9,19 +9,80 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// isPortable 判断是否为便携模式：exe 同目录存在 portable.flag 标记文件（便携版 zip 打包时附带）。
+func isPortable() bool {
+	exe, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(filepath.Join(filepath.Dir(exe), "portable.flag"))
+	return err == nil
+}
+
 // dbFilePath 返回数据库文件路径：
-// macOS / Linux 放到用户配置目录（~/.config/CryPtBox/ 等，.app 与系统安装场景工作目录不可写），
-// Windows 保持可执行文件同目录（兼容现有用户数据）。
+//
+//	Windows 便携模式（exe 旁有 portable.flag）→ exe 同目录 passbook.db
+//	Windows 安装模式 → %APPDATA%\CryPtBox\passbook.db
+//	macOS / Linux → 用户配置目录（~/.config/CryPtBox/ 等）
 func dbFilePath() string {
-	if runtime.GOOS != "windows" {
+	if runtime.GOOS == "windows" {
+		if isPortable() {
+			if exe, err := os.Executable(); err == nil {
+				return filepath.Join(filepath.Dir(exe), "passbook.db")
+			}
+			return "passbook.db"
+		}
 		if dir, err := os.UserConfigDir(); err == nil {
 			p := filepath.Join(dir, "CryPtBox")
 			if err := os.MkdirAll(p, 0o700); err == nil {
 				return filepath.Join(p, "passbook.db")
 			}
 		}
+		return "passbook.db"
+	}
+	if dir, err := os.UserConfigDir(); err == nil {
+		p := filepath.Join(dir, "CryPtBox")
+		if err := os.MkdirAll(p, 0o700); err == nil {
+			return filepath.Join(p, "passbook.db")
+		}
 	}
 	return "passbook.db"
+}
+
+// migrateLegacyData 安装模式首次启动时，把 exe 同目录的旧便携数据迁移到 APPDATA。
+// 迁移成功后旧文件重命名为 .migrated.bak 保留备份。
+func migrateLegacyData() {
+	if runtime.GOOS != "windows" || isPortable() {
+		return
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	legacy := filepath.Join(filepath.Dir(exe), "passbook.db")
+	if _, err := os.Stat(legacy); err != nil {
+		return // 无旧便携数据
+	}
+	target := dbFilePath()
+	if target == legacy {
+		return
+	}
+	if _, err := os.Stat(target); err == nil {
+		return // 目标已存在，不覆盖
+	}
+	if err := copyFile(legacy, target); err != nil {
+		return
+	}
+	_ = os.Rename(legacy, legacy+".migrated.bak")
+}
+
+// copyFile 复制单个文件（用于数据迁移）。
+func copyFile(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0o600)
 }
 
 // Entry 一条密码记录。Password / Notes 在内存中以明文出现（用于展示与同步），
@@ -40,6 +101,7 @@ type Entry struct {
 }
 
 func openStore() (*sql.DB, error) {
+	migrateLegacyData()
 	db, err := sql.Open("sqlite", dbFilePath())
 	if err != nil {
 		return nil, err

@@ -38,18 +38,27 @@ jobs:
       - name: Build
         run: wails build -platform windows/amd64 -ldflags "-s -w"
 
-      - name: Package
+      - name: Install NSIS
+        run: choco install nsis -y
+
+      - name: Build installer (setup.exe)
+        run: makensis installer.nsi
+
+      - name: Package portable zip
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force CryPtBox-windows-amd64 | Out-Null
-          Copy-Item build/bin/CryPtBox.exe CryPtBox-windows-amd64/
-          Copy-Item build/import-template.csv "CryPtBox-windows-amd64/密匣 - 导入模板.csv"
-          Compress-Archive -Path CryPtBox-windows-amd64 -DestinationPath CryPtBox-windows-amd64.zip -Force
+          New-Item -ItemType Directory -Force CryPtBox-portable | Out-Null
+          Copy-Item build/bin/CryPtBox.exe CryPtBox-portable/
+          Copy-Item build/import-template.csv "CryPtBox-portable/密匣 - 导入模板.csv"
+          New-Item -ItemType File -Force "CryPtBox-portable/portable.flag" | Out-Null
+          Compress-Archive -Path CryPtBox-portable -DestinationPath CryPtBox-portable.zip -Force
 
       - uses: actions/upload-artifact@v4
         with:
-          name: CryPtBox-windows-amd64
-          path: CryPtBox-windows-amd64.zip
+          name: CryPtBox-windows
+          path: |
+            CryPtBox-setup.exe
+            CryPtBox-portable.zip
 
   build-macos:
     name: macOS (universal)
@@ -144,7 +153,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/CryPtBox-windows-amd64.zip
+            dist/CryPtBox-setup.exe
+            dist/CryPtBox-portable.zip
             dist/CryPtBox-macos.dmg
             dist/CryPtBox-macos.zip
             dist/CryPtBox-linux-amd64.tar.gz

@@ -33,7 +33,8 @@
 
 | 平台 | 文件 | 说明 |
 |------|------|------|
-| Windows x64 | `CryPtBox-windows-amd64.zip` | 解压即用，托盘常驻 |
+| Windows x64 | `CryPtBox-setup.exe` | NSIS 安装包：安装到 Program Files，含开始菜单 / 桌面快捷方式 / 卸载器 |
+| Windows x64 | `CryPtBox-portable.zip` | 便携版：解压即用，数据库随 exe 存放（exe 旁带 `portable.flag`） |
 | macOS (Universal) | `CryPtBox-macos.dmg` | 含 Intel + Apple Silicon |
 | macOS (Universal) | `CryPtBox-macos.zip` | dmg 的备用格式 |
 | Linux x64 | `CryPtBox-linux-amd64.tar.gz` | 兼容 Ubuntu / Debian / 统信 UOS / 银河麒麟 / 中标麒麟等 x86_64 发行版 |
@@ -58,9 +59,12 @@ chmod +x /Applications/CryPtBox.app/Contents/MacOS/CryPtBox
 
 | 平台 | 路径 |
 |------|------|
-| Windows | 可执行文件同目录 `passbook.db` |
+| Windows（安装版） | `%APPDATA%\CryPtBox\passbook.db` |
+| Windows（便携版） | 可执行文件同目录 `passbook.db` |
 | macOS | `~/Library/Application Support/CryPtBox/passbook.db` |
 | Linux | `~/.config/CryPtBox/passbook.db` |
+
+> 安装版首次启动时，会自动把 exe 同目录的旧便携数据迁移到 `%APPDATA%\CryPtBox\`（旧文件保留为 `.migrated.bak` 备份）。
 
 ## 从源码构建
 
