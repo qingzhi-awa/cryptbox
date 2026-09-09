@@ -11,7 +11,7 @@ export default {
     wrongPassword: '마스터 비밀번호가 올바르지 않습니다'
   },
   header: { sync: '동기화', export: '내보내기', exportCsv: 'CSV 내보내기', lock: '잠금' },
-  toolbar: { search: '제목 / 사용자명 / URL / 분류 검색', add: '+ 추가', import: '가져오기', template: '가져오기 템플릿 다운로드' },
+  toolbar: { search: '제목 / 사용자명 / URL / 분류 검색', add: '+ 추가', import: '가져오기', template: '가져오기 템플릿 다운로드', settings: '설정' },
   list: { empty: '기록이 없습니다. "추가"를 눌러 시작하세요', show: '보기', hide: '숨기기', edit: '편집', delete: '삭제', copy: '복사' },
   modal: {
     addTitle: '비밀번호 추가',
@@ -55,6 +55,18 @@ export default {
     code: '인증 코드',
     sendCode: '코드 전송',
     codeSent: '코드가 전송되었습니다'
+  },
+  settings: {
+    title: '설정',
+    autostart: '시스템 시작 시 실행',
+    autosync: '잠금 해제 후 자동 동기화',
+    priority: '동기화 정책',
+    local: '로컬 우선 (서버 덮어쓰기)',
+    server: '서버 우선 (로컬 덮어쓰기)',
+    hint: '참고: 동기화는 전체 보관함을 덮어씁니다. 자동 동기화에는 서버 로그인이 필요합니다.',
+    saved: '설정이 저장되었습니다',
+    autoPushed: '동기화됨: 로컬 데이터 업로드',
+    autoPulled: '동기화됨: 서버에서 {n}개 항목 가져옴'
   },
   lang: { label: '언어', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' }
 }

@@ -11,7 +11,7 @@ export default {
     wrongPassword: 'Contraseña maestra incorrecta'
   },
   header: { sync: 'Sincronizar', export: 'Exportar', exportCsv: 'Exportar CSV', lock: 'Bloquear' },
-  toolbar: { search: 'Buscar título / usuario / URL / categoría', add: '+ Añadir', import: 'Importar', template: 'Descargar plantilla de importación' },
+  toolbar: { search: 'Buscar título / usuario / URL / categoría', add: '+ Añadir', import: 'Importar', template: 'Descargar plantilla de importación', settings: 'Ajustes' },
   list: { empty: 'Sin registros, haz clic en "Añadir"', show: 'Mostrar', hide: 'Ocultar', edit: 'Editar', delete: 'Eliminar', copy: 'Copiar' },
   modal: {
     addTitle: 'Añadir contraseña',
@@ -55,6 +55,18 @@ export default {
     code: 'Código de verificación',
     sendCode: 'Enviar código',
     codeSent: 'Código enviado'
+  },
+  settings: {
+    title: 'Ajustes',
+    autostart: 'Iniciar con el sistema',
+    autosync: 'Sincronizar automáticamente tras desbloquear',
+    priority: 'Política de sincronización',
+    local: 'Local primero (subir para sobrescribir servidor)',
+    server: 'Servidor primero (descargar para sobrescribir local)',
+    hint: 'Nota: la sincronización sobrescribe toda la bóveda; el auto-sync requiere iniciar sesión en el servidor.',
+    saved: 'Ajustes guardados',
+    autoPushed: 'Sincronizado: datos locales subidos',
+    autoPulled: 'Sincronizado: {n} entradas descargadas del servidor'
   },
   lang: { label: 'Idioma', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' }
 }

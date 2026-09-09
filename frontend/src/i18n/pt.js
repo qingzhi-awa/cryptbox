@@ -11,7 +11,7 @@ export default {
     wrongPassword: 'Senha mestra incorreta'
   },
   header: { sync: 'Sincronizar', export: 'Exportar', exportCsv: 'Exportar CSV', lock: 'Bloquear' },
-  toolbar: { search: 'Pesquisar título / usuário / URL / categoria', add: '+ Adicionar', import: 'Importar', template: 'Baixar modelo de importação' },
+  toolbar: { search: 'Pesquisar título / usuário / URL / categoria', add: '+ Adicionar', import: 'Importar', template: 'Baixar modelo de importação', settings: 'Configurações' },
   list: { empty: 'Sem registros, clique em "Adicionar"', show: 'Mostrar', hide: 'Ocultar', edit: 'Editar', delete: 'Excluir', copy: 'Copiar' },
   modal: {
     addTitle: 'Adicionar senha',
@@ -55,6 +55,18 @@ export default {
     code: 'Código de verificação',
     sendCode: 'Enviar código',
     codeSent: 'Código enviado'
+  },
+  settings: {
+    title: 'Configurações',
+    autostart: 'Iniciar com o sistema',
+    autosync: 'Sincronizar automaticamente após desbloquear',
+    priority: 'Política de sincronização',
+    local: 'Local primeiro (enviar local para sobrescrever servidor)',
+    server: 'Servidor primeiro (baixar servidor para sobrescrever local)',
+    hint: 'Nota: a sincronização sobrescreve todo o cofre; o auto-sync exige login no servidor.',
+    saved: 'Configurações salvas',
+    autoPushed: 'Sincronizado: dados locais enviados',
+    autoPulled: 'Sincronizado: {n} entradas baixadas do servidor'
   },
   lang: { label: 'Idioma', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' }
 }

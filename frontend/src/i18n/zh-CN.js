@@ -11,7 +11,7 @@ export default {
     wrongPassword: '主密码错误'
   },
   header: { sync: '同步', export: '导出', exportCsv: '导出 CSV', lock: '锁定' },
-  toolbar: { search: '搜索标题 / 用户名 / 网址 / 分类', add: '+ 新增', import: '导入', template: '下载导入模板' },
+  toolbar: { search: '搜索标题 / 用户名 / 网址 / 分类', add: '+ 新增', import: '导入', template: '下载导入模板', settings: '设置' },
   list: { empty: '暂无记录，点击「新增」开始', show: '查看', hide: '隐藏', edit: '编辑', delete: '删除', copy: '复制' },
   modal: {
     addTitle: '新增密码',
@@ -59,6 +59,18 @@ export default {
     scan: '扫描局域网',
     scanning: '扫描中...',
     noServer: '未发现局域网内的同步服务器'
+  },
+  settings: {
+    title: '设置',
+    autostart: '开机自启动',
+    autosync: '解锁后自动与服务端同步',
+    priority: '同步覆盖策略',
+    local: '本地优先（上传本地覆盖服务端）',
+    server: '服务端优先（下载服务端覆盖本地）',
+    hint: '提示：同步为整库覆盖；自动同步需已登录服务端。',
+    saved: '设置已保存',
+    autoPushed: '已自动同步：本地数据已上传',
+    autoPulled: '已自动同步：从服务端拉取 {n} 条'
   },
   lang: { label: '语言', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語' }
 }

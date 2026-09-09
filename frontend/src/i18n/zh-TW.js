@@ -11,7 +11,7 @@ export default {
     wrongPassword: '主密碼錯誤'
   },
   header: { sync: '同步', export: '匯出', exportCsv: '匯出 CSV', lock: '鎖定' },
-  toolbar: { search: '搜尋標題 / 使用者名稱 / 網址 / 分類', add: '+ 新增', import: '匯入', template: '下載匯入範本' },
+  toolbar: { search: '搜尋標題 / 使用者名稱 / 網址 / 分類', add: '+ 新增', import: '匯入', template: '下載匯入範本', settings: '設定' },
   list: { empty: '暫無記錄，點選「新增」開始', show: '查看', hide: '隱藏', edit: '編輯', delete: '刪除', copy: '複製' },
   modal: {
     addTitle: '新增密碼',
@@ -55,6 +55,18 @@ export default {
     code: '信箱驗證碼',
     sendCode: '傳送驗證碼',
     codeSent: '驗證碼已傳送'
+  },
+  settings: {
+    title: '設定',
+    autostart: '開機自動啟動',
+    autosync: '解鎖後自動與伺服器同步',
+    priority: '同步覆蓋策略',
+    local: '本機優先（上傳本機覆蓋伺服器）',
+    server: '伺服器優先（下載伺服器覆蓋本機）',
+    hint: '提示：同步為整庫覆蓋；自動同步需已登入伺服器。',
+    saved: '設定已儲存',
+    autoPushed: '已自動同步：本機資料已上傳',
+    autoPulled: '已自動同步：從伺服器擷取 {n} 筆'
   },
   lang: { label: '語言', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語' }
 }

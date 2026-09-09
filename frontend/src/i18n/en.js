@@ -11,7 +11,7 @@ export default {
     wrongPassword: 'Wrong master password'
   },
   header: { sync: 'Sync', export: 'Export', exportCsv: 'Export CSV', lock: 'Lock' },
-  toolbar: { search: 'Search title / username / URL / category', add: '+ Add', import: 'Import', template: 'Download Import Template' },
+  toolbar: { search: 'Search title / username / URL / category', add: '+ Add', import: 'Import', template: 'Download Import Template', settings: 'Settings' },
   list: { empty: 'No records yet, click "Add" to start', show: 'Show', hide: 'Hide', edit: 'Edit', delete: 'Delete', copy: 'Copy' },
   modal: {
     addTitle: 'Add Password',
@@ -59,6 +59,18 @@ export default {
     scan: 'Scan LAN',
     scanning: 'Scanning...',
     noServer: 'No sync server found on LAN'
+  },
+  settings: {
+    title: 'Settings',
+    autostart: 'Launch at login',
+    autosync: 'Auto-sync with server after unlock',
+    priority: 'Sync conflict policy',
+    local: 'Local first (upload local to overwrite server)',
+    server: 'Server first (download server to overwrite local)',
+    hint: 'Note: sync overwrites the entire vault; auto-sync requires being logged in to the server.',
+    saved: 'Settings saved',
+    autoPushed: 'Auto-synced: local data uploaded',
+    autoPulled: 'Auto-synced: {n} entries pulled from server'
   },
   lang: { label: 'Language', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語' }
 }

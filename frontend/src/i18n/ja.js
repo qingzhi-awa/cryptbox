@@ -11,7 +11,7 @@ export default {
     wrongPassword: 'マスターパスワードが違います'
   },
   header: { sync: '同期', export: 'エクスポート', exportCsv: 'CSVエクスポート', lock: 'ロック' },
-  toolbar: { search: 'タイトル / ユーザー名 / URL / 分類で検索', add: '+ 追加', import: 'インポート', template: 'インポートテンプレートDL' },
+  toolbar: { search: 'タイトル / ユーザー名 / URL / 分類で検索', add: '+ 追加', import: 'インポート', template: 'インポートテンプレートDL', settings: '設定' },
   list: { empty: '記録がありません。「追加」から始めてください', show: '表示', hide: '非表示', edit: '編集', delete: '削除', copy: 'コピー' },
   modal: {
     addTitle: 'パスワード追加',
@@ -55,6 +55,18 @@ export default {
     code: '認証コード',
     sendCode: 'コード送信',
     codeSent: 'コードを送信しました'
+  },
+  settings: {
+    title: '設定',
+    autostart: 'ログイン時に起動',
+    autosync: 'ロック解除後に自動同期',
+    priority: '同期ポリシー',
+    local: 'ローカル優先（ローカルをアップロード）',
+    server: 'サーバー優先（サーバーをダウンロード）',
+    hint: '同期は全庫上書きです。自動同期にはサーバーログインが必要です。',
+    saved: '設定を保存しました',
+    autoPushed: '自動同期：ローカルをアップロードしました',
+    autoPulled: '自動同期：サーバーから {n} 件取得'
   },
   lang: { label: '言語', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語' }
 }

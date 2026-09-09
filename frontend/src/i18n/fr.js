@@ -11,7 +11,7 @@ export default {
     wrongPassword: 'Mot de passe maître incorrect'
   },
   header: { sync: 'Synchroniser', export: 'Exporter', exportCsv: 'Exporter CSV', lock: 'Verrouiller' },
-  toolbar: { search: 'Rechercher titre / utilisateur / URL / catégorie', add: '+ Ajouter', import: 'Importer', template: "Télécharger le modèle d'import" },
+  toolbar: { search: 'Rechercher titre / utilisateur / URL / catégorie', add: '+ Ajouter', import: 'Importer', template: "Télécharger le modèle d'import", settings: 'Paramètres' },
   list: { empty: 'Aucun enregistrement, cliquez sur "Ajouter"', show: 'Afficher', hide: 'Masquer', edit: 'Modifier', delete: 'Supprimer', copy: 'Copier' },
   modal: {
     addTitle: 'Ajouter un mot de passe',
@@ -55,6 +55,18 @@ export default {
     code: 'Code de vérification',
     sendCode: 'Envoyer le code',
     codeSent: 'Code envoyé'
+  },
+  settings: {
+    title: 'Paramètres',
+    autostart: 'Lancer au démarrage',
+    autosync: 'Synchroniser automatiquement après déverrouillage',
+    priority: 'Politique de synchronisation',
+    local: 'Local d’abord (envoyer pour écraser le serveur)',
+    server: 'Serveur d’abord (télécharger pour écraser le local)',
+    hint: 'Note : la synchronisation écrase tout le coffre ; l’auto-sync nécessite une connexion au serveur.',
+    saved: 'Paramètres enregistrés',
+    autoPushed: 'Synchronisé : données locales envoyées',
+    autoPulled: 'Synchronisé : {n} entrées téléchargées du serveur'
   },
   lang: { label: 'Langue', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' }
 }

@@ -66,6 +66,7 @@
         <option value="txt">TXT</option>
       </select>
       <button class="btn-ghost" @click="downloadTemplate">{{ $t('toolbar.template') }}</button>
+      <button class="btn-ghost" @click="openSettings">{{ $t('toolbar.settings') }}</button>
       <template v-if="serverToken">
         <button class="btn-primary" @click="doPush">{{ $t('sync.upload') }}</button>
         <button class="btn-ghost" @click="doPull">{{ $t('sync.download') }}</button>
@@ -175,6 +176,37 @@
         <p v-if="msg" class="msg inline">{{ msg }}</p>
       </div>
     </div>
+
+    <!-- 设置弹窗 -->
+    <div v-if="settingsShow" class="mask" @click.self="settingsShow = false">
+      <div class="modal">
+        <h2>{{ $t('settings.title') }}</h2>
+        <label class="checkbox-row">
+          <input type="checkbox" v-model="settingsForm.autostart" />
+          <span>{{ $t('settings.autostart') }}</span>
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" v-model="settingsForm.autosync" />
+          <span>{{ $t('settings.autosync') }}</span>
+        </label>
+        <div class="settings-group">
+          <div class="settings-label">{{ $t('settings.priority') }}</div>
+          <label class="radio-row">
+            <input type="radio" value="local" v-model="settingsForm.priority" />
+            <span>{{ $t('settings.local') }}</span>
+          </label>
+          <label class="radio-row">
+            <input type="radio" value="server" v-model="settingsForm.priority" />
+            <span>{{ $t('settings.server') }}</span>
+          </label>
+        </div>
+        <p class="settings-hint">{{ $t('settings.hint') }}</p>
+        <div class="modal-actions">
+          <button class="btn-ghost" @click="settingsShow = false">{{ $t('modal.cancel') }}</button>
+          <button class="btn-primary" @click="saveSettings">{{ $t('modal.save') }}</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -217,6 +249,8 @@ export default {
       importFormat: '',
       exportFormat: '',
       toastTimer: null,
+      settingsShow: false,
+      settingsForm: { autostart: false, autosync: false, priority: 'local' },
       lang: localStorage.getItem('locale') || 'zh-CN'
     }
   },
@@ -289,6 +323,7 @@ export default {
           this.vaultUnlocked = true
           this.vaultPassword = ''
           await this.loadEntries()
+          this.maybeAutoSync()
         } else {
           this.error = this.$t('gate.wrongPassword')
         }
@@ -540,6 +575,52 @@ export default {
         await this.loadEntries()
       } catch (e) {
         this.error = String(e)
+      }
+    },
+    async openSettings() {
+      try {
+        const s = await api.GetSettings()
+        this.settingsForm = {
+          autostart: s.autostart === '1',
+          autosync: s.autosync === '1',
+          priority: s.priority === 'server' ? 'server' : 'local'
+        }
+      } catch (e) {
+        this.settingsForm = { autostart: false, autosync: false, priority: 'local' }
+      }
+      this.settingsShow = true
+    },
+    async saveSettings() {
+      try {
+        await api.SaveSettings(
+          this.settingsForm.autostart,
+          this.settingsForm.autosync,
+          this.settingsForm.priority
+        )
+        this.settingsShow = false
+        this.msg = this.$t('settings.saved')
+        this.autoClearToast('msg')
+      } catch (e) {
+        this.error = String(e)
+      }
+    },
+    async maybeAutoSync() {
+      try {
+        const s = await api.GetSettings()
+        if (s.autosync !== '1' || !this.serverToken || !this.server) return
+        let n = 0
+        if (s.priority === 'server') {
+          n = await api.PullVault(this.server, this.serverToken)
+          await this.loadEntries()
+          this.msg = this.$t('settings.autoPulled', { n })
+        } else {
+          await api.PushVault(this.server, this.serverToken)
+          this.msg = this.$t('settings.autoPushed')
+        }
+        this.autoClearToast('msg')
+      } catch (e) {
+        // 自动同步失败不打断使用，仅在控制台可见
+        console.warn('auto sync failed:', e)
       }
     }
   }
@@ -866,9 +947,37 @@ export default {
   color: #374151;
   font-size: 13px;
 }
+.settings-group {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+.settings-label {
+  font-size: 13px;
+  color: #374151;
+  margin-bottom: 4px;
+}
+.radio-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  cursor: pointer;
+  color: #374151;
+  font-size: 13px;
+}
+.radio-row input,
 .checkbox-row input {
   width: auto;
   cursor: pointer;
+}
+.settings-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #9ca3af;
+  line-height: 1.5;
 }
 .server-row {
   display: flex;

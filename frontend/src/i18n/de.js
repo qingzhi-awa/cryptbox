@@ -11,7 +11,7 @@ export default {
     wrongPassword: 'Falsches Master-Passwort'
   },
   header: { sync: 'Synchronisieren', export: 'Exportieren', exportCsv: 'CSV exportieren', lock: 'Sperren' },
-  toolbar: { search: 'Titel / Benutzer / URL / Kategorie suchen', add: '+ Hinzufügen', import: 'Importieren', template: 'Import-Vorlage herunterladen' },
+  toolbar: { search: 'Titel / Benutzer / URL / Kategorie suchen', add: '+ Hinzufügen', import: 'Importieren', template: 'Import-Vorlage herunterladen', settings: 'Einstellungen' },
   list: { empty: 'Keine Einträge, klicken Sie auf "Hinzufügen"', show: 'Anzeigen', hide: 'Ausblenden', edit: 'Bearbeiten', delete: 'Löschen', copy: 'Kopieren' },
   modal: {
     addTitle: 'Passwort hinzufügen',
@@ -55,6 +55,18 @@ export default {
     code: 'Bestätigungscode',
     sendCode: 'Code senden',
     codeSent: 'Code gesendet'
+  },
+  settings: {
+    title: 'Einstellungen',
+    autostart: 'Beim Systemstart ausführen',
+    autosync: 'Nach dem Entsperren automatisch synchronisieren',
+    priority: 'Synchronisationsrichtlinie',
+    local: 'Lokal zuerst (Server überschreiben)',
+    server: 'Server zuerst (Lokal überschreiben)',
+    hint: 'Hinweis: Die Synchronisierung überschreibt den gesamten Tresor; Auto-Sync erfordert eine Server-Anmeldung.',
+    saved: 'Einstellungen gespeichert',
+    autoPushed: 'Synchronisiert: lokale Daten hochgeladen',
+    autoPulled: 'Synchronisiert: {n} Einträge vom Server geladen'
   },
   lang: { label: 'Sprache', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' }
 }
