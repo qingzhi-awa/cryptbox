@@ -63,10 +63,12 @@ export default {
     priority: 'Synchronisationsrichtlinie',
     local: 'Lokal zuerst (Server überschreiben)',
     server: 'Server zuerst (Lokal überschreiben)',
-    hint: 'Hinweis: Die Synchronisierung überschreibt den gesamten Tresor; Auto-Sync erfordert eine Server-Anmeldung.',
+    merge: 'Nach Zeitstempel zusammenführen (Neuere beidseitig behalten)',
+    hint: 'Hinweis: Lokal/Server zuerst überschreibt den gesamten Tresor; Zusammenführen behält den neueren Datensatz je Zeitstempel und verbreitet Löschungen. Erfordert Server-Anmeldung.',
     saved: 'Einstellungen gespeichert',
     autoPushed: 'Synchronisiert: lokale Daten hochgeladen',
-    autoPulled: 'Synchronisiert: {n} Einträge vom Server geladen'
+    autoPulled: 'Synchronisiert: {n} Einträge vom Server geladen',
+    autoMerged: 'Zusammengeführt: {n} Einträge behalten'
   },
   lang: { label: 'Sprache', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' }
 }

@@ -199,6 +199,10 @@
             <input type="radio" value="server" v-model="settingsForm.priority" />
             <span>{{ $t('settings.server') }}</span>
           </label>
+          <label class="radio-row">
+            <input type="radio" value="merge" v-model="settingsForm.priority" />
+            <span>{{ $t('settings.merge') }}</span>
+          </label>
         </div>
         <p class="settings-hint">{{ $t('settings.hint') }}</p>
         <div class="modal-actions">
@@ -583,7 +587,7 @@ export default {
         this.settingsForm = {
           autostart: s.autostart === '1',
           autosync: s.autosync === '1',
-          priority: s.priority === 'server' ? 'server' : 'local'
+          priority: ['local', 'server', 'merge'].includes(s.priority) ? s.priority : 'local'
         }
       } catch (e) {
         this.settingsForm = { autostart: false, autosync: false, priority: 'local' }
@@ -613,6 +617,10 @@ export default {
           n = await api.PullVault(this.server, this.serverToken)
           await this.loadEntries()
           this.msg = this.$t('settings.autoPulled', { n })
+        } else if (s.priority === 'merge') {
+          n = await api.MergeVault(this.server, this.serverToken)
+          await this.loadEntries()
+          this.msg = this.$t('settings.autoMerged', { n })
         } else {
           await api.PushVault(this.server, this.serverToken)
           this.msg = this.$t('settings.autoPushed')

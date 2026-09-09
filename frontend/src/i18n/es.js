@@ -63,10 +63,12 @@ export default {
     priority: 'Política de sincronización',
     local: 'Local primero (subir para sobrescribir servidor)',
     server: 'Servidor primero (descargar para sobrescribir local)',
-    hint: 'Nota: la sincronización sobrescribe toda la bóveda; el auto-sync requiere iniciar sesión en el servidor.',
+    merge: 'Fusionar por marca de tiempo (conservar los más recientes)',
+    hint: 'Nota: local/servidor primero sobrescribe toda la bóveda; la fusión conserva la entrada más reciente por marca de tiempo y propaga las eliminaciones. Requiere iniciar sesión.',
     saved: 'Ajustes guardados',
     autoPushed: 'Sincronizado: datos locales subidos',
-    autoPulled: 'Sincronizado: {n} entradas descargadas del servidor'
+    autoPulled: 'Sincronizado: {n} entradas descargadas del servidor',
+    autoMerged: 'Fusionado: {n} entradas conservadas'
   },
   lang: { label: 'Idioma', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' }
 }

@@ -63,10 +63,12 @@ export default {
     priority: '동기화 정책',
     local: '로컬 우선 (서버 덮어쓰기)',
     server: '서버 우선 (로컬 덮어쓰기)',
-    hint: '참고: 동기화는 전체 보관함을 덮어씁니다. 자동 동기화에는 서버 로그인이 필요합니다.',
+    merge: '타임스탬프로 병합 (양쪽에서 최신 유지)',
+    hint: '참고: 로컬/서버 우선은 전체 덮어쓰기; 병합은 타임스탬프 기준 최신 유지 및 삭제 전파. 자동 동기화에는 서버 로그인이 필요합니다.',
     saved: '설정이 저장되었습니다',
     autoPushed: '동기화됨: 로컬 데이터 업로드',
-    autoPulled: '동기화됨: 서버에서 {n}개 항목 가져옴'
+    autoPulled: '동기화됨: 서버에서 {n}개 항목 가져옴',
+    autoMerged: '병합됨: {n}개 항목 유지'
   },
   lang: { label: '언어', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' }
 }

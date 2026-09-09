@@ -63,10 +63,12 @@ export default {
     priority: 'Politique de synchronisation',
     local: 'Local d’abord (envoyer pour écraser le serveur)',
     server: 'Serveur d’abord (télécharger pour écraser le local)',
-    hint: 'Note : la synchronisation écrase tout le coffre ; l’auto-sync nécessite une connexion au serveur.',
+    merge: 'Fusionner par horodatage (garder les plus récents des deux côtés)',
+    hint: 'Note : local/serveur d’abord écrase tout le coffre ; la fusion garde l’entrée la plus récente par horodatage et propage les suppressions. L’auto-sync nécessite une connexion.',
     saved: 'Paramètres enregistrés',
     autoPushed: 'Synchronisé : données locales envoyées',
-    autoPulled: 'Synchronisé : {n} entrées téléchargées du serveur'
+    autoPulled: 'Synchronisé : {n} entrées téléchargées du serveur',
+    autoMerged: 'Fusionné : {n} entrées conservées'
   },
   lang: { label: 'Langue', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' }
 }

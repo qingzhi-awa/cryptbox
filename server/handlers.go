@@ -30,6 +30,7 @@ type Entry struct {
 	Notes     string `json:"notes"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
+	Deleted   bool   `json:"deleted"`
 }
 
 type User struct {
@@ -315,7 +316,9 @@ func (s *Server) handleDeleteEntry(w http.ResponseWriter, r *http.Request) {
 	}
 	var title string
 	_ = s.db.QueryRow(`SELECT title FROM entries WHERE id = ? AND user_id = ?`, id, claims.UserID).Scan(&title)
-	_, err = s.db.Exec(`DELETE FROM entries WHERE id = ? AND user_id = ?`, id, claims.UserID)
+	// 软删除：打墓碑标记并清空敏感字段，保留 id 与时间戳用于跨端同步传播删除。
+	now := time.Now().Format(time.RFC3339)
+	_, err = s.db.Exec(`UPDATE entries SET deleted = 1, password_enc = '', notes_enc = '', updated_at = ? WHERE id = ? AND user_id = ?`, now, id, claims.UserID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "db error"})
 		return
@@ -382,7 +385,7 @@ func (s *Server) handleImportText(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleGetVault(w http.ResponseWriter, r *http.Request) {
 	claims := currentClaims(r)
-	list, err := s.listEntries(claims.UserID)
+	list, err := s.listEntriesAll(claims.UserID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "db error"})
 		return
@@ -780,7 +783,7 @@ func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 // ---- 数据访问辅助 ----
 
 func (s *Server) listEntries(userID int64) ([]Entry, error) {
-	rows, err := s.db.Query(`SELECT id, title, username, url, category, password_enc, notes_enc, created_at, updated_at FROM entries WHERE user_id = ? ORDER BY updated_at DESC`, userID)
+	rows, err := s.db.Query(`SELECT id, title, username, url, category, password_enc, notes_enc, created_at, updated_at FROM entries WHERE user_id = ? AND deleted = 0 ORDER BY updated_at DESC`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -798,6 +801,33 @@ func (s *Server) listEntries(userID int64) ([]Entry, error) {
 		if e.Notes, err = aesDecryptString(s.encKey, notesEnc); err != nil {
 			return nil, err
 		}
+		list = append(list, e)
+	}
+	return list, rows.Err()
+}
+
+// listEntriesAll 返回该用户的全部条目（含墓碑），用于同步 vault 上传/下载。
+func (s *Server) listEntriesAll(userID int64) ([]Entry, error) {
+	rows, err := s.db.Query(`SELECT id, title, username, url, category, password_enc, notes_enc, created_at, updated_at, deleted FROM entries WHERE user_id = ? ORDER BY updated_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	list := []Entry{}
+	for rows.Next() {
+		var e Entry
+		var pwEnc, notesEnc string
+		var deleted int
+		if err := rows.Scan(&e.ID, &e.Title, &e.Username, &e.URL, &e.Category, &pwEnc, &notesEnc, &e.CreatedAt, &e.UpdatedAt, &deleted); err != nil {
+			return nil, err
+		}
+		if e.Password, err = aesDecryptString(s.encKey, pwEnc); err != nil {
+			return nil, err
+		}
+		if e.Notes, err = aesDecryptString(s.encKey, notesEnc); err != nil {
+			return nil, err
+		}
+		e.Deleted = deleted != 0
 		list = append(list, e)
 	}
 	return list, rows.Err()
@@ -853,8 +883,12 @@ func (s *Server) replaceEntries(userID int64, list []Entry) error {
 			_ = tx.Rollback()
 			return err
 		}
-		_, err = tx.Exec(`INSERT INTO entries (user_id, title, username, url, category, password_enc, notes_enc, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)`,
-			userID, e.Title, e.Username, e.URL, e.Category, pwEnc, notesEnc, e.CreatedAt, e.UpdatedAt)
+		deleted := 0
+		if e.Deleted {
+			deleted = 1
+		}
+		_, err = tx.Exec(`INSERT INTO entries (id, user_id, title, username, url, category, password_enc, notes_enc, created_at, updated_at, deleted) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+			e.ID, userID, e.Title, e.Username, e.URL, e.Category, pwEnc, notesEnc, e.CreatedAt, e.UpdatedAt, deleted)
 		if err != nil {
 			_ = tx.Rollback()
 			return err

@@ -67,10 +67,12 @@ export default {
     priority: 'Sync conflict policy',
     local: 'Local first (upload local to overwrite server)',
     server: 'Server first (download server to overwrite local)',
-    hint: 'Note: sync overwrites the entire vault; auto-sync requires being logged in to the server.',
+    merge: 'Merge by timestamp (keep newer records both ways)',
+    hint: 'Note: local/server first overwrites the entire vault; merge keeps the newer record per timestamp and propagates deletions. Auto-sync requires being logged in.',
     saved: 'Settings saved',
     autoPushed: 'Auto-synced: local data uploaded',
-    autoPulled: 'Auto-synced: {n} entries pulled from server'
+    autoPulled: 'Auto-synced: {n} entries pulled from server',
+    autoMerged: 'Auto-merged: {n} entries kept'
   },
   lang: { label: 'Language', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語' }
 }

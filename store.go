@@ -25,7 +25,7 @@ func dbFilePath() string {
 }
 
 // Entry 一条密码记录。Password / Notes 在内存中以明文出现（用于展示与同步），
-// 落盘时被主密钥加密。
+// 落盘时被主密钥加密。Deleted 为墓碑标记：软删除后保留 id + 时间戳用于跨端同步传播删除。
 type Entry struct {
 	ID        int64  `json:"id"`
 	Title     string `json:"title"`
@@ -36,6 +36,7 @@ type Entry struct {
 	Notes     string `json:"notes"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
+	Deleted   bool   `json:"deleted"`
 }
 
 func openStore() (*sql.DB, error) {
@@ -56,7 +57,8 @@ func openStore() (*sql.DB, error) {
 			category TEXT NOT NULL DEFAULT '',
 			notes_enc TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL
+			updated_at TEXT NOT NULL,
+			deleted INTEGER NOT NULL DEFAULT 0
 		)`,
 		`CREATE TABLE IF NOT EXISTS meta (
 			key TEXT PRIMARY KEY,
@@ -68,7 +70,35 @@ func openStore() (*sql.DB, error) {
 			return nil, err
 		}
 	}
+	// 迁移：为旧库补充 deleted 列（用于同步删除传播的墓碑标记）。
+	if !columnExists(db, "entries", "deleted") {
+		if _, err := db.Exec(`ALTER TABLE entries ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return nil, err
+		}
+	}
 	return db, nil
+}
+
+// columnExists 判断表中是否存在指定列（SQLite 无 ADD COLUMN IF NOT EXISTS）。
+func columnExists(db *sql.DB, table, column string) bool {
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return false
+		}
+		if name == column {
+			return true
+		}
+	}
+	return false
 }
 
 func setMeta(db *sql.DB, key, value string) error {

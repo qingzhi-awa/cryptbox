@@ -23,6 +23,7 @@ export default {
   SyncLogin: (server, username, password) => app().SyncLogin(server, username, password),
   PushVault: (server, token) => app().PushVault(server, token),
   PullVault: (server, token) => app().PullVault(server, token),
+  MergeVault: (server, token) => app().MergeVault(server, token),
   GetSettings: () => app().GetSettings(),
   SaveSettings: (autostart, autosync, priority) => app().SaveSettings(autostart, autosync, priority)
 }

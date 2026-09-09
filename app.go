@@ -28,8 +28,8 @@ func NewApp() *App {
 	return &App{}
 }
 
-func (a *App) isQuitting() bool   { return a.quitting.Load() }
-func (a *App) setQuitting()       { a.quitting.Store(true) }
+func (a *App) isQuitting() bool { return a.quitting.Load() }
+func (a *App) setQuitting()     { a.quitting.Store(true) }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
@@ -138,7 +138,7 @@ func (a *App) ListEntries() ([]Entry, error) {
 	if err := a.requireUnlock(); err != nil {
 		return nil, err
 	}
-	rows, err := a.db.Query(`SELECT id, title, username, password_enc, url, category, notes_enc, created_at, updated_at FROM entries ORDER BY updated_at DESC`)
+	rows, err := a.db.Query(`SELECT id, title, username, password_enc, url, category, notes_enc, created_at, updated_at FROM entries WHERE deleted = 0 ORDER BY updated_at DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -152,6 +152,32 @@ func (a *App) ListEntries() ([]Entry, error) {
 		}
 		e.Password, _ = decryptString(a.key, pwEnc)
 		e.Notes, _ = decryptString(a.key, notesEnc)
+		list = append(list, e)
+	}
+	return list, rows.Err()
+}
+
+// listEntriesAll 返回全部记录（含墓碑），用于同步合并与整库上传。
+func (a *App) listEntriesAll() ([]Entry, error) {
+	if err := a.requireUnlock(); err != nil {
+		return nil, err
+	}
+	rows, err := a.db.Query(`SELECT id, title, username, password_enc, url, category, notes_enc, created_at, updated_at, deleted FROM entries ORDER BY updated_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	list := []Entry{}
+	for rows.Next() {
+		var e Entry
+		var pwEnc, notesEnc string
+		var deleted int
+		if err := rows.Scan(&e.ID, &e.Title, &e.Username, &pwEnc, &e.URL, &e.Category, &notesEnc, &e.CreatedAt, &e.UpdatedAt, &deleted); err != nil {
+			return nil, err
+		}
+		e.Password, _ = decryptString(a.key, pwEnc)
+		e.Notes, _ = decryptString(a.key, notesEnc)
+		e.Deleted = deleted != 0
 		list = append(list, e)
 	}
 	return list, rows.Err()
@@ -194,7 +220,9 @@ func (a *App) DeleteEntry(id int64) error {
 	if err := a.requireUnlock(); err != nil {
 		return err
 	}
-	_, err := a.db.Exec(`DELETE FROM entries WHERE id = ?`, id)
+	// 软删除：打墓碑标记并清空敏感字段，保留 id 与时间戳用于跨端同步传播删除。
+	now := time.Now().Format(time.RFC3339)
+	_, err := a.db.Exec(`UPDATE entries SET deleted = 1, password_enc = '', notes_enc = '', updated_at = ? WHERE id = ?`, now, id)
 	return err
 }
 
@@ -449,9 +477,9 @@ func (a *App) GetServerConfig() map[string]string {
 	}
 }
 
-// PushVault 将本地密码条目整体上传到服务器（服务端加密存储）。
+// PushVault 将本地密码条目整体上传到服务器（服务端加密存储），含墓碑记录以传播删除。
 func (a *App) PushVault(server, token string) error {
-	list, err := a.ListEntries()
+	list, err := a.listEntriesAll()
 	if err != nil {
 		return err
 	}
@@ -460,7 +488,7 @@ func (a *App) PushVault(server, token string) error {
 	return c.Push(list)
 }
 
-// PullVault 从服务器下载密码条目并替换本地数据，返回条数。
+// PullVault 从服务器下载密码条目并替换本地数据，返回条数（含墓碑，用于后续合并）。
 func (a *App) PullVault(server, token string) (int, error) {
 	c := NewSyncClient(server)
 	c.Token = token
@@ -474,6 +502,68 @@ func (a *App) PullVault(server, token string) (int, error) {
 	return len(list), nil
 }
 
+// MergeVault 按记录级时间戳合并本地与服务端：同 id 取 updated_at 较新者，
+// 双方独有记录均保留；合并结果写回本地并上传到服务端。返回合并后条目数。
+func (a *App) MergeVault(server, token string) (int, error) {
+	c := NewSyncClient(server)
+	c.Token = token
+	serverList, err := c.Pull()
+	if err != nil {
+		return 0, err
+	}
+	localList, err := a.listEntriesAll()
+	if err != nil {
+		return 0, err
+	}
+	merged := mergeEntries(localList, serverList)
+	if err := a.replaceEntries(merged); err != nil {
+		return 0, err
+	}
+	if err := c.Push(merged); err != nil {
+		return 0, err
+	}
+	return len(merged), nil
+}
+
+// mergeEntries 合并两份条目：按 id 归并，同 id 比较 updated_at，较新者覆盖较旧者。
+func mergeEntries(local, remote []Entry) []Entry {
+	m := map[int64]Entry{}
+	order := []int64{}
+	put := func(e Entry) {
+		if _, ok := m[e.ID]; !ok {
+			order = append(order, e.ID)
+		}
+		m[e.ID] = e
+	}
+	for _, e := range local {
+		put(e)
+	}
+	for _, e := range remote {
+		if cur, ok := m[e.ID]; ok {
+			if newer(e.UpdatedAt, cur.UpdatedAt) {
+				put(e)
+			}
+		} else {
+			put(e)
+		}
+	}
+	out := make([]Entry, 0, len(order))
+	for _, id := range order {
+		out = append(out, m[id])
+	}
+	return out
+}
+
+// newer 比较两条 RFC3339 时间戳，返回 a 是否晚于 b；解析失败时回退字符串比较。
+func newer(a, b string) bool {
+	ta, ea := time.Parse(time.RFC3339, a)
+	tb, eb := time.Parse(time.RFC3339, b)
+	if ea == nil && eb == nil {
+		return ta.After(tb)
+	}
+	return a > b
+}
+
 func (a *App) replaceEntries(list []Entry) error {
 	tx, err := a.db.Begin()
 	if err != nil {
@@ -484,6 +574,10 @@ func (a *App) replaceEntries(list []Entry) error {
 		return err
 	}
 	for _, e := range list {
+		deleted := 0
+		if e.Deleted {
+			deleted = 1
+		}
 		pwEnc, err := encryptString(a.key, e.Password)
 		if err != nil {
 			_ = tx.Rollback()
@@ -494,8 +588,8 @@ func (a *App) replaceEntries(list []Entry) error {
 			_ = tx.Rollback()
 			return err
 		}
-		_, err = tx.Exec(`INSERT INTO entries (id, title, username, password_enc, url, category, notes_enc, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)`,
-			e.ID, e.Title, e.Username, pwEnc, e.URL, e.Category, notesEnc, e.CreatedAt, e.UpdatedAt)
+		_, err = tx.Exec(`INSERT INTO entries (id, title, username, password_enc, url, category, notes_enc, created_at, updated_at, deleted) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+			e.ID, e.Title, e.Username, pwEnc, e.URL, e.Category, notesEnc, e.CreatedAt, e.UpdatedAt, deleted)
 		if err != nil {
 			_ = tx.Rollback()
 			return err

@@ -49,7 +49,8 @@ func migrate(db *sql.DB) error {
 			password_enc TEXT NOT NULL,
 			notes_enc TEXT NOT NULL,
 			created_at VARCHAR(64) NOT NULL,
-			updated_at VARCHAR(64) NOT NULL
+			updated_at VARCHAR(64) NOT NULL,
+			deleted INTEGER NOT NULL DEFAULT 0
 		)`,
 		`CREATE TABLE IF NOT EXISTS meta (
 			key VARCHAR(128) PRIMARY KEY,
@@ -80,6 +81,10 @@ func migrate(db *sql.DB) error {
 	}
 	// 兼容旧库：为已存在的 users 表补充 email 列。
 	if err := ensureColumn(db, "users", "email", "VARCHAR(255) NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	// 兼容旧库：为已存在的 entries 表补充 deleted 墓碑列。
+	if err := ensureColumn(db, "entries", "deleted", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
 	return nil

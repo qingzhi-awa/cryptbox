@@ -63,10 +63,12 @@ export default {
     priority: 'Política de sincronização',
     local: 'Local primeiro (enviar local para sobrescrever servidor)',
     server: 'Servidor primeiro (baixar servidor para sobrescrever local)',
-    hint: 'Nota: a sincronização sobrescreve todo o cofre; o auto-sync exige login no servidor.',
+    merge: 'Mesclar por timestamp (manter os mais recentes)',
+    hint: 'Nota: local/servidor primeiro sobrescreve todo o cofre; a mesclagem mantém o registro mais recente por timestamp e propaga exclusões. Requer login no servidor.',
     saved: 'Configurações salvas',
     autoPushed: 'Sincronizado: dados locais enviados',
-    autoPulled: 'Sincronizado: {n} entradas baixadas do servidor'
+    autoPulled: 'Sincronizado: {n} entradas baixadas do servidor',
+    autoMerged: 'Mesclado: {n} entradas mantidas'
   },
   lang: { label: 'Idioma', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' }
 }
