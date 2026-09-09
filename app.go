@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -17,14 +18,18 @@ const verifierPlain = "passbook-verifier-v1"
 
 // App 是暴露给前端调用的绑定对象。
 type App struct {
-	ctx context.Context
-	db  *sql.DB
-	key []byte // 解锁后持有的 AES-256 主密钥
+	ctx      context.Context
+	db       *sql.DB
+	key      []byte // 解锁后持有的 AES-256 主密钥
+	quitting atomic.Bool
 }
 
 func NewApp() *App {
 	return &App{}
 }
+
+func (a *App) isQuitting() bool   { return a.quitting.Load() }
+func (a *App) setQuitting()       { a.quitting.Store(true) }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
@@ -33,6 +38,22 @@ func (a *App) startup(ctx context.Context) {
 		panic(err)
 	}
 	a.db = db
+	// Windows 下启动系统托盘（后台常驻）
+	startTray(a)
+}
+
+// beforeClose 拦截窗口关闭：Windows 下隐藏到托盘，其余平台正常退出。
+func (a *App) beforeClose(ctx context.Context) bool {
+	return platformBeforeClose(a)
+}
+
+// showMainWindow 显示并激活主窗口（托盘/二次启动调用）。
+func showMainWindow(a *App) {
+	if a.ctx == nil {
+		return
+	}
+	runtime.WindowUnminimise(a.ctx)
+	runtime.WindowShow(a.ctx)
 }
 
 // ---- 主密码 / 解锁 ----
@@ -328,9 +349,9 @@ func (a *App) ImportCSV(path string) (int, error) {
 // ImportDialog 弹出文件选择框并导入 CSV，返回导入条数。
 func (a *App) ImportDialog() (int, error) {
 	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "导入密码",
+		Title: "导入密码（支持 Chrome / Edge 导出的 CSV）",
 		Filters: []runtime.FileFilter{
-			{DisplayName: "CSV 文件 (*.csv)", Pattern: "*.csv"},
+			{DisplayName: "密码 CSV（Chrome / Edge / 密匣）", Pattern: "*.csv"},
 			{DisplayName: "所有文件 (*.*)", Pattern: "*.*"},
 		},
 	})

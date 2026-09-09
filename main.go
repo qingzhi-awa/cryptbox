@@ -29,11 +29,16 @@ func main() {
 		Title:  "CryPtBox",
 		Width:  1024,
 		Height: 720,
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId:               "cryptbox-passbook-single-instance",
+			OnSecondInstanceLaunch: func(options.SecondInstanceData) { showMainWindow(app) },
+		},
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup:        app.startup,
+		OnBeforeClose:    app.beforeClose,
 		Windows: &windows.Options{
 			WebviewGpuIsDisabled:                true,
 			WebviewDisableRendererCodeIntegrity: true,
