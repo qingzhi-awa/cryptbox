@@ -1,0 +1,60 @@
+export default {
+  app: { title: 'CryPtBox' },
+  file: { template: 'Шаблон импорта' },
+  gate: {
+    unlockHint: 'Введите пароль для разблокировки',
+    setupHint: 'Первый запуск, задайте пароль для входа',
+    passwordPlaceholder: 'Мастер-пароль',
+    setupPlaceholder: 'Задайте пароль для входа (мин. 6 символов)',
+    unlock: 'Разблокировать',
+    create: 'Создать и войти',
+    wrongPassword: 'Неверный мастер-пароль'
+  },
+  header: { sync: 'Синхронизация', export: 'Экспорт', exportCsv: 'Экспорт CSV', lock: 'Заблокировать' },
+  toolbar: { search: 'Поиск по названию / логину / URL / категории', add: '+ Добавить', import: 'Импорт', template: 'Скачать шаблон импорта' },
+  list: { empty: 'Нет записей, нажмите «Добавить»', show: 'Показать', hide: 'Скрыть', edit: 'Изменить', delete: 'Удалить', copy: 'Копировать' },
+  modal: {
+    addTitle: 'Добавить пароль',
+    editTitle: 'Изменить пароль',
+    title: 'Название *',
+    username: 'Логин',
+    password: 'Пароль',
+    url: 'URL',
+    category: 'Категория',
+    notes: 'Заметки',
+    cancel: 'Отмена',
+    save: 'Сохранить'
+  },
+  msg: {
+    titleRequired: 'Название обязательно',
+    saved: 'Сохранено',
+    deleted: 'Удалено',
+    exported: 'Экспортировано {n} записей в {path}',
+    exportedCsv: 'Экспортировано {n} записей в CSV',
+    imported: 'Импортировано {n} записей',
+    confirmDelete: 'Удалить «{title}»?',
+    downloaded: 'Загружено {n} записей с сервера',
+    uploaded: 'Загружено на сервер',
+    loginSuccess: 'Вход выполнен',
+    registerSuccess: 'Регистрация и вход выполнены',
+    copied: 'Скопировано'
+  },
+  sync: {
+    title: 'Синхронизация с сервером',
+    server: 'Адрес сервера',
+    username: 'Аккаунт',
+    password: 'Пароль',
+    register: 'Регистрация',
+    login: 'Вход',
+    loggedIn: 'Выполнен вход, можно загружать / скачивать',
+    logout: 'Выйти',
+    loggedOut: 'Вы вышли',
+    upload: 'Загрузить на сервер',
+    download: 'Скачать с сервера',
+    email: 'Эл. почта',
+    code: 'Код подтверждения',
+    sendCode: 'Отправить код',
+    codeSent: 'Код отправлен'
+  },
+  lang: { label: 'Язык', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' }
+}

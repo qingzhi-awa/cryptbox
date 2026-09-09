@@ -1,0 +1,60 @@
+export default {
+  app: { title: 'CryPtBox' },
+  file: { template: 'Import-Vorlage' },
+  gate: {
+    unlockHint: 'Bitte Passwort zum Entsperren eingeben',
+    setupHint: 'Erste Verwendung, bitte Login-Passwort festlegen',
+    passwordPlaceholder: 'Master-Passwort',
+    setupPlaceholder: 'Login-Passwort festlegen (mind. 6 Zeichen)',
+    unlock: 'Entsperren',
+    create: 'Erstellen & starten',
+    wrongPassword: 'Falsches Master-Passwort'
+  },
+  header: { sync: 'Synchronisieren', export: 'Exportieren', exportCsv: 'CSV exportieren', lock: 'Sperren' },
+  toolbar: { search: 'Titel / Benutzer / URL / Kategorie suchen', add: '+ Hinzufügen', import: 'Importieren', template: 'Import-Vorlage herunterladen' },
+  list: { empty: 'Keine Einträge, klicken Sie auf "Hinzufügen"', show: 'Anzeigen', hide: 'Ausblenden', edit: 'Bearbeiten', delete: 'Löschen', copy: 'Kopieren' },
+  modal: {
+    addTitle: 'Passwort hinzufügen',
+    editTitle: 'Passwort bearbeiten',
+    title: 'Titel *',
+    username: 'Benutzername',
+    password: 'Passwort',
+    url: 'URL',
+    category: 'Kategorie',
+    notes: 'Notizen',
+    cancel: 'Abbrechen',
+    save: 'Speichern'
+  },
+  msg: {
+    titleRequired: 'Titel ist erforderlich',
+    saved: 'Gespeichert',
+    deleted: 'Gelöscht',
+    exported: '{n} Einträge nach {path} exportiert',
+    exportedCsv: '{n} Einträge als CSV exportiert',
+    imported: '{n} Einträge importiert',
+    confirmDelete: '"{title}" löschen?',
+    downloaded: '{n} Einträge vom Server heruntergeladen',
+    uploaded: 'Zum Server hochgeladen',
+    loginSuccess: 'Angemeldet',
+    registerSuccess: 'Registriert und angemeldet',
+    copied: 'Kopiert'
+  },
+  sync: {
+    title: 'Mit Server synchronisieren',
+    server: 'Server-URL',
+    username: 'Konto',
+    password: 'Passwort',
+    register: 'Registrieren',
+    login: 'Anmelden',
+    loggedIn: 'Angemeldet, Sie können hochladen / herunterladen',
+    logout: 'Abmelden',
+    loggedOut: 'Abgemeldet',
+    upload: 'Zum Server hochladen',
+    download: 'Vom Server herunterladen',
+    email: 'E-Mail',
+    code: 'Bestätigungscode',
+    sendCode: 'Code senden',
+    codeSent: 'Code gesendet'
+  },
+  lang: { label: 'Sprache', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' }
+}

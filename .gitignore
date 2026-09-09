@@ -1,0 +1,17 @@
+# 构建产物
+build/bin/
+build/darwin/*.icns
+frontend/dist/
+frontend/wailsjs/
+
+# 依赖
+frontend/node_modules/
+
+# 本地数据
+*.db
+*.db-shm
+*.db-wal
+
+# 系统
+.DS_Store
+Thumbs.db

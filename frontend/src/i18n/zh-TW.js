@@ -1,0 +1,60 @@
+export default {
+  app: { title: '密匣' },
+  file: { template: '匯入範本' },
+  gate: {
+    unlockHint: '請輸入密碼解鎖',
+    setupHint: '首次使用，請設定登入密碼',
+    passwordPlaceholder: '主密碼',
+    setupPlaceholder: '設定登入密碼（至少 6 位）',
+    unlock: '解鎖',
+    create: '建立並進入',
+    wrongPassword: '主密碼錯誤'
+  },
+  header: { sync: '同步', export: '匯出', exportCsv: '匯出 CSV', lock: '鎖定' },
+  toolbar: { search: '搜尋標題 / 使用者名稱 / 網址 / 分類', add: '+ 新增', import: '匯入', template: '下載匯入範本' },
+  list: { empty: '暫無記錄，點選「新增」開始', show: '查看', hide: '隱藏', edit: '編輯', delete: '刪除', copy: '複製' },
+  modal: {
+    addTitle: '新增密碼',
+    editTitle: '編輯密碼',
+    title: '標題 *',
+    username: '使用者名稱',
+    password: '密碼',
+    url: '網址',
+    category: '分類',
+    notes: '備註',
+    cancel: '取消',
+    save: '儲存'
+  },
+  msg: {
+    titleRequired: '標題不能為空',
+    saved: '已儲存',
+    deleted: '已刪除',
+    exported: '已匯出 {n} 條到 {path}',
+    exportedCsv: '已匯出 {n} 條 CSV',
+    imported: '已匯入 {n} 條',
+    confirmDelete: '確定刪除「{title}」？',
+    downloaded: '已從伺服器下載 {n} 條',
+    uploaded: '已上傳到伺服器',
+    loginSuccess: '登入成功',
+    registerSuccess: '註冊成功，已登入',
+    copied: '已複製'
+  },
+  sync: {
+    title: '同步到伺服器',
+    server: '伺服器位址',
+    username: '帳號',
+    password: '密碼',
+    register: '註冊',
+    login: '登入',
+    loggedIn: '已登入，可進行上傳 / 下載',
+    logout: '登出',
+    loggedOut: '已登出',
+    upload: '上傳到伺服器',
+    download: '從伺服器下載',
+    email: '信箱',
+    code: '信箱驗證碼',
+    sendCode: '傳送驗證碼',
+    codeSent: '驗證碼已傳送'
+  },
+  lang: { label: '語言', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語' }
+}

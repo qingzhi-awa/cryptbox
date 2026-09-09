@@ -1,0 +1,60 @@
+export default {
+  app: { title: 'CryPtBox' },
+  file: { template: 'Modelo de importação' },
+  gate: {
+    unlockHint: 'Digite a senha para desbloquear',
+    setupHint: 'Primeiro uso, defina uma senha de login',
+    passwordPlaceholder: 'Senha mestra',
+    setupPlaceholder: 'Defina a senha de login (mín. 6 caracteres)',
+    unlock: 'Desbloquear',
+    create: 'Criar e entrar',
+    wrongPassword: 'Senha mestra incorreta'
+  },
+  header: { sync: 'Sincronizar', export: 'Exportar', exportCsv: 'Exportar CSV', lock: 'Bloquear' },
+  toolbar: { search: 'Pesquisar título / usuário / URL / categoria', add: '+ Adicionar', import: 'Importar', template: 'Baixar modelo de importação' },
+  list: { empty: 'Sem registros, clique em "Adicionar"', show: 'Mostrar', hide: 'Ocultar', edit: 'Editar', delete: 'Excluir', copy: 'Copiar' },
+  modal: {
+    addTitle: 'Adicionar senha',
+    editTitle: 'Editar senha',
+    title: 'Título *',
+    username: 'Usuário',
+    password: 'Senha',
+    url: 'URL',
+    category: 'Categoria',
+    notes: 'Notas',
+    cancel: 'Cancelar',
+    save: 'Salvar'
+  },
+  msg: {
+    titleRequired: 'O título é obrigatório',
+    saved: 'Salvo',
+    deleted: 'Excluído',
+    exported: '{n} entradas exportadas para {path}',
+    exportedCsv: '{n} entradas exportadas para CSV',
+    imported: '{n} entradas importadas',
+    confirmDelete: 'Excluir "{title}"?',
+    downloaded: '{n} entradas baixadas do servidor',
+    uploaded: 'Enviado para o servidor',
+    loginSuccess: 'Conectado',
+    registerSuccess: 'Registrado e conectado',
+    copied: 'Copiado'
+  },
+  sync: {
+    title: 'Sincronizar com o servidor',
+    server: 'URL do servidor',
+    username: 'Conta',
+    password: 'Senha',
+    register: 'Registrar',
+    login: 'Entrar',
+    loggedIn: 'Conectado, você pode enviar / baixar',
+    logout: 'Sair',
+    loggedOut: 'Sessão encerrada',
+    upload: 'Enviar para o servidor',
+    download: 'Baixar do servidor',
+    email: 'E-mail',
+    code: 'Código de verificação',
+    sendCode: 'Enviar código',
+    codeSent: 'Código enviado'
+  },
+  lang: { label: 'Idioma', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' }
+}

@@ -1,0 +1,60 @@
+export default {
+  app: { title: 'CryPtBox' },
+  file: { template: 'インポートテンプレート' },
+  gate: {
+    unlockHint: 'パスワードを入力してロック解除してください',
+    setupHint: '初回利用です。ログインパスワードを設定してください',
+    passwordPlaceholder: 'マスターパスワード',
+    setupPlaceholder: 'ログインパスワードを設定（6文字以上）',
+    unlock: 'ロック解除',
+    create: '作成して開始',
+    wrongPassword: 'マスターパスワードが違います'
+  },
+  header: { sync: '同期', export: 'エクスポート', exportCsv: 'CSVエクスポート', lock: 'ロック' },
+  toolbar: { search: 'タイトル / ユーザー名 / URL / 分類で検索', add: '+ 追加', import: 'インポート', template: 'インポートテンプレートDL' },
+  list: { empty: '記録がありません。「追加」から始めてください', show: '表示', hide: '非表示', edit: '編集', delete: '削除', copy: 'コピー' },
+  modal: {
+    addTitle: 'パスワード追加',
+    editTitle: 'パスワード編集',
+    title: 'タイトル *',
+    username: 'ユーザー名',
+    password: 'パスワード',
+    url: 'URL',
+    category: '分類',
+    notes: 'メモ',
+    cancel: 'キャンセル',
+    save: '保存'
+  },
+  msg: {
+    titleRequired: 'タイトルは必須です',
+    saved: '保存しました',
+    deleted: '削除しました',
+    exported: '{n}件を {path} にエクスポートしました',
+    exportedCsv: '{n}件をCSVにエクスポートしました',
+    imported: '{n}件をインポートしました',
+    confirmDelete: '「{title}」を削除しますか？',
+    downloaded: 'サーバーから {n}件ダウンロードしました',
+    uploaded: 'サーバーにアップロードしました',
+    loginSuccess: 'ログインしました',
+    registerSuccess: '登録してログインしました',
+    copied: 'コピーしました'
+  },
+  sync: {
+    title: 'サーバーと同期',
+    server: 'サーバーURL',
+    username: 'アカウント',
+    password: 'パスワード',
+    register: '登録',
+    login: 'ログイン',
+    loggedIn: 'ログイン済み。アップロード / ダウンロードできます',
+    logout: 'ログアウト',
+    loggedOut: 'ログアウトしました',
+    upload: 'サーバーへアップロード',
+    download: 'サーバーからダウンロード',
+    email: 'メールアドレス',
+    code: '認証コード',
+    sendCode: 'コード送信',
+    codeSent: 'コードを送信しました'
+  },
+  lang: { label: '言語', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語' }
+}

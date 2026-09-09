@@ -1,0 +1,60 @@
+export default {
+  app: { title: 'CryPtBox' },
+  file: { template: 'Plantilla de importación' },
+  gate: {
+    unlockHint: 'Introduce la contraseña para desbloquear',
+    setupHint: 'Primer uso, define una contraseña de acceso',
+    passwordPlaceholder: 'Contraseña maestra',
+    setupPlaceholder: 'Define la contraseña de acceso (mín. 6 caracteres)',
+    unlock: 'Desbloquear',
+    create: 'Crear y entrar',
+    wrongPassword: 'Contraseña maestra incorrecta'
+  },
+  header: { sync: 'Sincronizar', export: 'Exportar', exportCsv: 'Exportar CSV', lock: 'Bloquear' },
+  toolbar: { search: 'Buscar título / usuario / URL / categoría', add: '+ Añadir', import: 'Importar', template: 'Descargar plantilla de importación' },
+  list: { empty: 'Sin registros, haz clic en "Añadir"', show: 'Mostrar', hide: 'Ocultar', edit: 'Editar', delete: 'Eliminar', copy: 'Copiar' },
+  modal: {
+    addTitle: 'Añadir contraseña',
+    editTitle: 'Editar contraseña',
+    title: 'Título *',
+    username: 'Usuario',
+    password: 'Contraseña',
+    url: 'URL',
+    category: 'Categoría',
+    notes: 'Notas',
+    cancel: 'Cancelar',
+    save: 'Guardar'
+  },
+  msg: {
+    titleRequired: 'El título es obligatorio',
+    saved: 'Guardado',
+    deleted: 'Eliminado',
+    exported: '{n} entradas exportadas a {path}',
+    exportedCsv: '{n} entradas exportadas a CSV',
+    imported: '{n} entradas importadas',
+    confirmDelete: '¿Eliminar "{title}"?',
+    downloaded: '{n} entradas descargadas del servidor',
+    uploaded: 'Subido al servidor',
+    loginSuccess: 'Sesión iniciada',
+    registerSuccess: 'Registrado e iniciado sesión',
+    copied: 'Copiado'
+  },
+  sync: {
+    title: 'Sincronizar con el servidor',
+    server: 'URL del servidor',
+    username: 'Cuenta',
+    password: 'Contraseña',
+    register: 'Registrarse',
+    login: 'Iniciar sesión',
+    loggedIn: 'Sesión iniciada, puedes subir / descargar',
+    logout: 'Cerrar sesión',
+    loggedOut: 'Sesión cerrada',
+    upload: 'Subir al servidor',
+    download: 'Descargar del servidor',
+    email: 'Correo electrónico',
+    code: 'Código de verificación',
+    sendCode: 'Enviar código',
+    codeSent: 'Código enviado'
+  },
+  lang: { label: 'Idioma', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' }
+}

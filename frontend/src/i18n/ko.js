@@ -1,0 +1,60 @@
+export default {
+  app: { title: 'CryPtBox' },
+  file: { template: '가져오기 템플릿' },
+  gate: {
+    unlockHint: '비밀번호를 입력하세요',
+    setupHint: '처음 사용 중입니다. 로그인 비밀번호를 설정하세요',
+    passwordPlaceholder: '마스터 비밀번호',
+    setupPlaceholder: '로그인 비밀번호 설정 (6자 이상)',
+    unlock: '잠금 해제',
+    create: '생성 및 시작',
+    wrongPassword: '마스터 비밀번호가 올바르지 않습니다'
+  },
+  header: { sync: '동기화', export: '내보내기', exportCsv: 'CSV 내보내기', lock: '잠금' },
+  toolbar: { search: '제목 / 사용자명 / URL / 분류 검색', add: '+ 추가', import: '가져오기', template: '가져오기 템플릿 다운로드' },
+  list: { empty: '기록이 없습니다. "추가"를 눌러 시작하세요', show: '보기', hide: '숨기기', edit: '편집', delete: '삭제', copy: '복사' },
+  modal: {
+    addTitle: '비밀번호 추가',
+    editTitle: '비밀번호 편집',
+    title: '제목 *',
+    username: '사용자명',
+    password: '비밀번호',
+    url: 'URL',
+    category: '분류',
+    notes: '메모',
+    cancel: '취소',
+    save: '저장'
+  },
+  msg: {
+    titleRequired: '제목은 필수입니다',
+    saved: '저장됨',
+    deleted: '삭제됨',
+    exported: '{n}개를 {path}에 내보냈습니다',
+    exportedCsv: '{n}개를 CSV로 내보냈습니다',
+    imported: '{n}개를 가져왔습니다',
+    confirmDelete: '"{title}"을(를) 삭제할까요?',
+    downloaded: '서버에서 {n}개를 다운로드했습니다',
+    uploaded: '서버에 업로드했습니다',
+    loginSuccess: '로그인 성공',
+    registerSuccess: '가입 및 로그인 완료',
+    copied: '복사됨'
+  },
+  sync: {
+    title: '서버와 동기화',
+    server: '서버 주소',
+    username: '계정',
+    password: '비밀번호',
+    register: '가입',
+    login: '로그인',
+    loggedIn: '로그인됨, 업로드/다운로드 가능',
+    logout: '로그아웃',
+    loggedOut: '로그아웃되었습니다',
+    upload: '서버에 업로드',
+    download: '서버에서 다운로드',
+    email: '이메일',
+    code: '인증 코드',
+    sendCode: '코드 전송',
+    codeSent: '코드가 전송되었습니다'
+  },
+  lang: { label: '언어', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' }
+}

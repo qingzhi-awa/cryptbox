@@ -1,0 +1,109 @@
+name: Build CryPtBox Clients
+
+# 双端客户端构建：Windows (wails) + macOS (wails universal -> dmg/zip)
+# 触发：push main / PR / 打 tag v* / 手动
+# 打 tag v* 时自动创建 GitHub Release 并附全部产物
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  WAILS_VERSION: v2.15.0
+
+jobs:
+  build-windows:
+    name: Windows (amd64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
+
+      - name: Build
+        run: wails build -platform windows/amd64 -ldflags "-s -w"
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force CryPtBox-windows-amd64 | Out-Null
+          Copy-Item build/bin/CryPtBox.exe CryPtBox-windows-amd64/
+          Copy-Item build/import-template.csv "CryPtBox-windows-amd64/密匣 - 导入模板.csv"
+          Compress-Archive -Path CryPtBox-windows-amd64 -DestinationPath CryPtBox-windows-amd64.zip -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CryPtBox-windows-amd64
+          path: CryPtBox-windows-amd64.zip
+
+  build-macos:
+    name: macOS (universal)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
+
+      - name: Build (darwin universal: amd64 + arm64)
+        run: wails build -platform darwin/universal -ldflags "-s -w"
+
+      - name: Package DMG and ZIP
+        run: |
+          hdiutil create -volname CryPtBox -srcfolder build/bin/CryPtBox.app -ov -format UDZO CryPtBox-macos.dmg
+          ditto -c -k --keepParent build/bin/CryPtBox.app CryPtBox-macos.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CryPtBox-macos
+          path: |
+            CryPtBox-macos.dmg
+            CryPtBox-macos.zip
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [ build-windows, build-macos ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: dist
+
+      - name: Attach artifacts to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/CryPtBox-windows-amd64.zip
+            dist/CryPtBox-macos.dmg
+            dist/CryPtBox-macos.zip
+          generate_release_notes: true
