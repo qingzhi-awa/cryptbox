@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "CryPtBox 密匣",
         "width": 1024,
         "height": 720,

@@ -12,7 +12,7 @@ export default {
   },
   header: { sync: '同步', export: '导出', exportCsv: '导出 CSV', lock: '锁定' },
   toolbar: { search: '搜索标题 / 用户名 / 网址 / 分类', add: '+ 新增', io: '导入 / 导出', import: '导入', export: '导出', template: '下载导入模板', settings: '设置' },
-  list: { empty: '暂无记录，点击「新增」开始', show: '查看', hide: '隐藏', edit: '编辑', delete: '删除', copy: '复制' },
+  list: { empty: '暂无记录，点击「新增」开始', show: '查看', hide: '隐藏', edit: '编辑', delete: '删除', copy: '复制', none: '无' },
   modal: {
     addTitle: '新增密码',
     editTitle: '编辑密码',

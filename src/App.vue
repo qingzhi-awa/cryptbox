@@ -74,28 +74,42 @@
     <div v-if="msg" class="toast toast-msg">{{ msg }}</div>
     <div v-if="error" class="toast toast-error">{{ error }}</div>
 
-    <div class="list">
-      <div v-for="e in filtered" :key="e.id" class="item">
-        <div class="item-main">
+    <div class="list grid-list">
+      <div v-for="e in filtered" :key="e.id" class="entry">
+        <div class="entry-head">
           <div class="title">{{ e.title }}</div>
-          <div class="meta">
-            <span class="field" @click="copyText(e.username)">{{ e.username || '—' }}</span>
-            <button v-if="e.username" class="copy-btn" @click="copyText(e.username)">{{ $t('list.copy') }}</button>
-            <span v-if="e.url" class="field" @click="copyText(e.url)">{{ e.url }}</span>
-            <button v-if="e.url" class="copy-btn" @click="copyText(e.url)">{{ $t('list.copy') }}</button>
-            <span v-if="e.category" class="tag">{{ e.category }}</span>
+          <div class="ops">
+            <button class="btn-ghost" @click="startEdit(e)">{{ $t('list.edit') }}</button>
+            <button class="btn-danger" @click="remove(e)">{{ $t('list.delete') }}</button>
           </div>
         </div>
-        <div class="pw">
-          <span class="mono field" @click="copyText(e.password)">{{ revealed.has(e.id) ? e.password : '••••••••' }}</span>
-          <button class="mini" @click="toggleReveal(e.id)">
-            {{ revealed.has(e.id) ? $t('list.hide') : $t('list.show') }}
-          </button>
-          <button class="copy-btn" @click="copyText(e.password)">{{ $t('list.copy') }}</button>
-        </div>
-        <div class="ops">
-          <button class="btn-ghost" @click="startEdit(e)">{{ $t('list.edit') }}</button>
-          <button class="btn-danger" @click="remove(e)">{{ $t('list.delete') }}</button>
+        <div class="entry-meta">
+          <div class="meta-line">
+            <span class="label">{{ $t('modal.url') }}:</span>
+            <span class="field" @click="copyText(e.url)">{{ e.url || $t('list.none') }}</span>
+            <button v-if="e.url" class="copy-btn" @click="copyText(e.url)">{{ $t('list.copy') }}</button>
+          </div>
+          <div class="meta-line">
+            <span class="label">{{ $t('modal.username') }}:</span>
+            <span class="field" @click="copyText(e.username)">{{ e.username || $t('list.none') }}</span>
+            <button v-if="e.username" class="copy-btn" @click="copyText(e.username)">{{ $t('list.copy') }}</button>
+          </div>
+          <div class="meta-line">
+            <span class="label">{{ $t('modal.password') }}:</span>
+            <span class="mono field" @click="copyText(e.password)">{{ revealed.has(e.id) ? e.password : '••••••••' }}</span>
+            <button class="mini" @click="toggleReveal(e.id)">
+              {{ revealed.has(e.id) ? $t('list.hide') : $t('list.show') }}
+            </button>
+            <button class="copy-btn" @click="copyText(e.password)">{{ $t('list.copy') }}</button>
+          </div>
+          <div class="meta-line">
+            <span class="label">{{ $t('modal.category') }}:</span>
+            <span class="field" @click="copyText(e.category)">{{ e.category || $t('list.none') }}</span>
+          </div>
+          <div class="meta-line">
+            <span class="label">{{ $t('modal.notes') }}:</span>
+            <span class="field" @click="copyText(e.notes)">{{ e.notes || $t('list.none') }}</span>
+          </div>
         </div>
       </div>
       <div v-if="filtered.length === 0" class="empty">{{ $t('list.empty') }}</div>
@@ -890,6 +904,44 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.grid-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 8px;
+  align-items: start;
+}
+.entry {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #fff;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+.entry-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.entry-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #6b7280;
+  font-size: 12px;
+}
+.meta-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.label {
+  color: #9ca3af;
+  flex-shrink: 0;
 }
 .item {
   display: flex;

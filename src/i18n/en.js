@@ -12,7 +12,7 @@ export default {
   },
   header: { sync: 'Sync', export: 'Export', exportCsv: 'Export CSV', lock: 'Lock' },
   toolbar: { search: 'Search title / username / URL / category', add: '+ Add', io: 'Import / Export', import: 'Import', export: 'Export', template: 'Download Import Template', settings: 'Settings' },
-  list: { empty: 'No records yet, click "Add" to start', show: 'Show', hide: 'Hide', edit: 'Edit', delete: 'Delete', copy: 'Copy' },
+  list: { empty: 'No records yet, click "Add" to start', show: 'Show', hide: 'Hide', edit: 'Edit', delete: 'Delete', copy: 'Copy', none: 'None' },
   modal: {
     addTitle: 'Add Password',
     editTitle: 'Edit Password',
