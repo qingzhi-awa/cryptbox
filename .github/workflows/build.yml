@@ -1,6 +1,6 @@
-name: Build CryPtBox Clients
+name: Build CryPtBox
 
-# 双端客户端构建：Windows (wails) + macOS (wails universal -> dmg/zip)
+# Tauri 2 客户端跨平台构建：Windows (NSIS + MSI) + macOS (dmg) + Linux (deb)
 # 触发：push main / PR / 打 tag v* / 手动
 # 打 tag v* 时自动创建 GitHub Release 并附全部产物
 
@@ -11,134 +11,83 @@ on:
   pull_request:
   workflow_dispatch:
 
-env:
-  WAILS_VERSION: v2.15.0
-
 jobs:
   build-windows:
-    name: Windows (amd64)
+    name: Windows (x64)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
 
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Build
-        run: wails build -platform windows/amd64 -ldflags "-s -w"
-
-      - name: Install NSIS
-        run: choco install nsis -y
-
-      - name: Build installer (setup.exe)
+      # 移除本地 signtool 签名命令（CI 无证书），否则 tauri build 会因签名失败
+      - name: Remove local signCommand for CI
         shell: pwsh
         run: |
-          $c = Get-Content installer.nsi -Raw -Encoding UTF8
-          [System.IO.File]::WriteAllText("$PWD\installer.nsi", $c, (New-Object System.Text.UTF8Encoding $true))
-          & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" installer.nsi
+          $p = "src-tauri/tauri.conf.json"
+          $c = Get-Content $p -Raw | ConvertFrom-Json
+          $c.bundle.windows.PSObject.Properties.Remove("signCommand")
+          $c | ConvertTo-Json -Depth 30 | Set-Content $p -Encoding UTF8
 
-      - name: Package portable zip
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force CryPtBox-portable | Out-Null
-          Copy-Item build/bin/CryPtBox.exe CryPtBox-portable/
-          Copy-Item build/import-template.csv "CryPtBox-portable/密匣 - 导入模板.csv"
-          New-Item -ItemType File -Force "CryPtBox-portable/portable.flag" | Out-Null
-          Compress-Archive -Path CryPtBox-portable -DestinationPath CryPtBox-portable.zip -Force
+      - run: npm install
+      - run: npx tauri build
 
       - uses: actions/upload-artifact@v4
         with:
           name: CryPtBox-windows
-          path: |
-            CryPtBox-setup.exe
-            CryPtBox-portable.zip
+          path: src-tauri/target/release/bundle/
 
   build-macos:
-    name: macOS (universal)
+    name: macOS
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
 
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: "Build (darwin universal: amd64 + arm64)"
-        run: wails build -platform darwin/universal -ldflags "-s -w"
-
-      - name: Package DMG and ZIP
-        run: |
-          hdiutil create -volname CryPtBox -srcfolder build/bin/CryPtBox.app -ov -format UDZO CryPtBox-macos.dmg
-          ditto -c -k --keepParent build/bin/CryPtBox.app CryPtBox-macos.zip
+      - run: npm install
+      - run: npx tauri build
 
       - uses: actions/upload-artifact@v4
         with:
           name: CryPtBox-macos
-          path: |
-            CryPtBox-macos.dmg
-            CryPtBox-macos.zip
+          path: src-tauri/target/release/bundle/
 
   build-linux:
-    name: Linux (amd64)
+    name: Linux (x64)
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install GTK / WebKit2GTK build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev gcc pkg-config
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
 
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Build
-        run: wails build -platform linux/amd64 -ldflags "-s -w"
-
-      - name: Package
+      - name: Install system dependencies
         run: |
-          mkdir -p CryPtBox-linux-amd64
-          cp build/bin/CryPtBox CryPtBox-linux-amd64/
-          cp build/import-template.csv "CryPtBox-linux-amd64/密匣 - 导入模板.csv"
-          chmod +x CryPtBox-linux-amd64/CryPtBox
-          tar -czf CryPtBox-linux-amd64.tar.gz CryPtBox-linux-amd64
+          sudo apt-get update
+          sudo apt-get install -y build-essential libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - run: npm install
+      - run: npx tauri build --bundles deb
 
       - uses: actions/upload-artifact@v4
         with:
-          name: CryPtBox-linux-amd64
-          path: CryPtBox-linux-amd64.tar.gz
+          name: CryPtBox-linux
+          path: src-tauri/target/release/bundle/
 
   release:
     name: Release
@@ -156,10 +105,5 @@ jobs:
       - name: Attach artifacts to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/CryPtBox-setup.exe
-            dist/CryPtBox-portable.zip
-            dist/CryPtBox-macos.dmg
-            dist/CryPtBox-macos.zip
-            dist/CryPtBox-linux-amd64.tar.gz
+          files: dist/**/*
           generate_release_notes: true

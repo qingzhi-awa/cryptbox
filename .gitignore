@@ -1,18 +1,22 @@
-# 构建产物
-build/bin/
-build/darwin/*.icns
-frontend/dist/
-frontend/wailsjs/
+# 前端依赖
+node_modules/
+
+# 前端构建产物
+dist/
+
+# Tauri/Rust 构建产物
+src-tauri/target/
+src-tauri/gen/
 
 # 安装包产物
-CryPtBox-setup.exe
-CryPtBox-portable.zip
-CryPtBox-macos.dmg
-CryPtBox-macos.zip
-CryPtBox-linux-amd64.tar.gz
-
-# 依赖
-frontend/node_modules/
+CryPtBox-*.exe
+CryPtBox-*.msi
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+*.tar.gz
+*.zip
 
 # 本地数据
 *.db

@@ -1,0 +1,24 @@
+{
+  "name": "cryptbox-client",
+  "private": true,
+  "version": "0.2.3",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2",
+    "vue": "^3.4.27",
+    "vue-i18n": "^9.13.1",
+    "vue-router": "^4.3.2"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@vitejs/plugin-vue": "^5.0.4",
+    "vite": "^5.2.11"
+  }
+}

@@ -1,5 +1,0 @@
-#!/bin/bash
-
-### This script is called when the user uninstalls the application.
-
-exit 0

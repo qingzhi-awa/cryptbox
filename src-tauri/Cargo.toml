@@ -1,0 +1,34 @@
+[package]
+name = "cryptbox"
+version = "0.2.3"
+description = "CryPtBox 密匣 - 跨平台密码管理器桌面客户端"
+edition = "2021"
+
+[lib]
+name = "cryptbox_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-autostart = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+aes-gcm = "0.10"
+scrypt = { version = "0.11", features = ["simple"] }
+rand = "0.8"
+base64 = "0.22"
+reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls"] }
+get_if_addrs = "0.5"
+csv = "1"
+encoding_rs = "0.8"
+chrono = { version = "0.4", features = ["clock"] }
+dirs = "5"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

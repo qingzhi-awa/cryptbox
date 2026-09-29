@@ -1,0 +1,33 @@
+CryPtBox — Terms of Use & Privacy Statement
+
+1. Software Nature
+CryPtBox is open-source software. All source code of the client and server is publicly
+available for review and audit. Anyone with technical skills can inspect the code to
+confirm that the software does not upload, steal, or leak your data.
+
+2. Fully Local Operation
+The CryPtBox server runs on your own fnOS device. All data (password vault, account
+information, etc.) is stored in a local database on your device, and is never uploaded
+to the developer or any third-party server.
+
+3. Password Security
+- Password entries are encrypted with AES-256-GCM before being written to the database.
+- The encryption key is stored only on your own device.
+- The developer cannot access your device, and therefore cannot access your passwords or any data.
+
+4. Your Data Belongs to You
+Your data belongs only to you. When uninstalling the software, you may choose to keep
+or permanently delete all data.
+
+5. Disclaimer
+CryPtBox is provided "as is". The developer is not liable for any data loss or damage
+caused by the use of this software.
+
+6. It is recommended that you back up important data regularly to prevent data loss.
+CryPtBox does not provide compensation for data loss. The final right of interpretation
+belongs to the CryPtBox development team.
+
+                                                    CryPtBox Development Team
+                                                          2026.9
+                                                        © Copyright
+                                                       All Rights Reserved

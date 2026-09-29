@@ -1,0 +1,14 @@
+{
+  "bundle": {
+    "licenseFile": "LICENSE.en.txt",
+    "windows": {
+      "nsis": {
+        "languages": ["English", "SimpChinese"],
+        "installerHooks": "hooks/uninstall.en.nsh"
+      },
+      "wix": {
+        "language": "en-US"
+      }
+    }
+  }
+}

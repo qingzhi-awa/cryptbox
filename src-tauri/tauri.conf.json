@@ -1,0 +1,66 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CryPtBox",
+  "version": "0.2.3",
+  "identifier": "cn.nnfn.cryptbox",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "CryPtBox 密匣",
+        "width": 1024,
+        "height": 720,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico"
+    ],
+    "licenseFile": "LICENSE.txt",
+    "publisher": "CryPtBox",
+    "homepage": "https://cryptbox.fnosp.com",
+    "copyright": "Copyright © 2026 CryPtBox. All rights reserved. https://cryptbox.fnosp.com",
+    "windows": {
+      "signCommand": {
+        "cmd": "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64\\signtool.exe",
+        "args": [
+          "sign",
+          "/sha1",
+          "1B7C7A9A53D9A61B71560F222940E40E8CC35F99",
+          "/fd",
+          "SHA256",
+          "/tr",
+          "http://timestamp.digicert.com",
+          "/td",
+          "SHA256",
+          "%1"
+        ]
+      },
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "installMode": "currentUser",
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": true,
+        "installerHooks": "hooks/uninstall.nsh"
+      },
+      "wix": {
+        "language": "zh-CN"
+      }
+    }
+  }
+}
