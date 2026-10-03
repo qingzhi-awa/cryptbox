@@ -28,6 +28,19 @@ csv = "1"
 encoding_rs = "0.8"
 chrono = { version = "0.4", features = ["clock"] }
 dirs = "5"
+sha2 = "0.10"
+# rustls 仅用于自定义证书校验器：抓取「对端真实证书」以实现指纹固定（pinning）。
+# 版本与 reqwest 依赖的 rustls 一致（0.23），provider 统一用 ring（reqwest 亦然）。
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+# 系统凭据库：vault_key 不再明文落 SQLite。
+# Windows → 凭据管理器；macOS → 钥匙串；Linux → Secret Service（需要桌面密钥环服务，
+# 无密钥环时由 secret 模块自动降级为 0600 文件并告警）。
+keyring = { version = "3", default-features = false, features = [
+    "windows-native",
+    "apple-native",
+    "sync-secret-service",
+    "crypto-rust",
+] }
 
 [features]
 default = ["custom-protocol"]

@@ -12,7 +12,7 @@ export default {
   },
   header: { sync: 'Sync', export: 'Export', exportCsv: 'Export CSV', lock: 'Lock' },
   toolbar: { search: 'Search title / username / URL / category', add: '+ Add', io: 'Import / Export', import: 'Import', export: 'Export', template: 'Download Import Template', settings: 'Settings' },
-  list: { empty: 'No records yet, click "Add" to start', show: 'Show', hide: 'Hide', edit: 'Edit', delete: 'Delete', copy: 'Copy', none: 'None' },
+  list: { empty: 'No records yet, click "Add" to start', show: 'Show', hide: 'Hide', edit: 'Edit', delete: 'Delete', copy: 'Copy', none: 'None', pin: 'Pin', unpin: 'Unpin', dragHint: 'Drag to reorder' },
   modal: {
     addTitle: 'Add Password',
     editTitle: 'Edit Password',
@@ -40,7 +40,10 @@ export default {
     uploaded: 'Uploaded to server',
     loginSuccess: 'Logged in',
     registerSuccess: 'Registered and logged in',
-    copied: 'Copied'
+    copied: 'Copied',
+    pinned: 'Pinned',
+    unpinned: 'Unpinned',
+    pinGroupOnly: 'Pinned and normal entries cannot be swapped; unpin first'
   },
   sync: {
     title: 'Sync to Server',
@@ -62,7 +65,17 @@ export default {
     remember: 'Remember password',
     scan: 'Scan LAN',
     scanning: 'Scanning...',
-    noServer: 'No sync server found on LAN'
+    noServer: 'No sync server found on LAN',
+    needUnlock: 'Please unlock the local vault before syncing',
+    notLoggedIn: 'Your sync session has expired. Please sign in again.',
+    fpLabel: 'Trusted certificate fingerprint (SHA-256)',
+    allowedTitle: 'Confirmed servers',
+    allowedRemove: 'Revoke',
+    trustDenied: 'Cancelled: the server was not confirmed, so no data will be sent to it',
+    fpChanged: 'The server certificate fingerprint no longer matches the trusted record; the connection was rejected',
+    plaintextWarn: 'Currently using plaintext HTTP: traffic is not encrypted and the server cannot be authenticated. Switch to HTTPS.',
+    useHttps: 'Use HTTPS',
+    secretFileWarn: 'System credential store unavailable; the sync key has been downgraded to a local file (mode 0600).'
   },
   settings: {
     title: 'Settings',
@@ -79,6 +92,7 @@ export default {
     autoMerged: 'Auto-merged: {n} entries kept',
     recycle: 'Recycle Bin',
     recycleOn: 'Move to recycle bin on delete (recoverable)',
+    pinSync: 'Sync pinned entries across devices',
     recycleDays: 'Recycle bin retention days'
   },
   trash: {

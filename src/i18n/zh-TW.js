@@ -74,6 +74,7 @@ export default {
     autoMerged: '已自動合併：保留 {n} 筆',
     recycle: '刪除回收站',
     recycleOn: '刪除時移入回收站（可恢復）',
+    pinSync: '在所有裝置間同步置頂狀態',
     recycleDays: '回收站保留天數'
   },
   trash: {

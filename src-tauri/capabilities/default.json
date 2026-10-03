@@ -1,14 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "主窗口默认权限：核心事件 + 文件对话框（导入/导出）",
+  "description": "主窗口默认权限：仅核心事件能力。文件对话框（导入/导出）与服务器信任确认均已移至 Rust 侧调用，渲染层不再需要任何 dialog 权限——最小权限原则：即使渲染层被注入，也无法自行弹出系统对话框或读写文件。",
   "windows": ["main"],
-  "permissions": [
-    "core:default",
-    "dialog:allow-open",
-    "dialog:allow-save",
-    "dialog:allow-message",
-    "dialog:allow-ask",
-    "dialog:allow-confirm"
-  ]
+  "permissions": ["core:default"]
 }

@@ -34,7 +34,7 @@
     <header class="topbar">
       <h1>{{ $t('app.title') }}</h1>
       <div class="actions">
-        <button v-if="!serverToken" class="btn-primary" @click="openSync">{{ $t('sync.login') }}</button>
+        <button v-if="!loggedIn" class="btn-primary" @click="openSync">{{ $t('sync.login') }}</button>
         <div v-else class="user-menu">
           <button class="user-trigger" @click="userMenuOpen = !userMenuOpen">
             <img v-if="myAvatar" :src="avatarUrl" class="avatar" alt="" />
@@ -65,7 +65,7 @@
       <button class="btn-ghost" @click="downloadTemplate">{{ $t('toolbar.template') }}</button>
       <button class="btn-ghost" @click="openTrash">{{ $t('trash.title') }}</button>
       <button class="btn-ghost" @click="openSettings">{{ $t('toolbar.settings') }}</button>
-      <template v-if="serverToken">
+      <template v-if="loggedIn">
         <button class="btn-primary" @click="doPush">{{ $t('sync.upload') }}</button>
         <button class="btn-ghost" @click="doPull">{{ $t('sync.download') }}</button>
       </template>
@@ -75,10 +75,32 @@
     <div v-if="error" class="toast toast-error">{{ error }}</div>
 
     <div class="list grid-list">
-      <div v-for="e in filtered" :key="e.id" class="entry">
+      <div
+        v-for="e in filtered"
+        :key="e.id"
+        class="entry"
+        :class="{ 'entry-pinned': e.pinned, 'entry-dragging': dragId === e.id, 'entry-drop-target': dragOverId === e.id && dragId !== e.id }"
+        :draggable="canDrag"
+        :title="canDrag ? $t('list.dragHint') : ''"
+        @dragstart="onDragStart(e)"
+        @dragover.prevent="onDragOver(e)"
+        @dragleave="onDragLeave(e)"
+        @drop.prevent="onDrop(e)"
+        @dragend="onDragEnd"
+      >
         <div class="entry-head">
-          <div class="title">{{ e.title }}</div>
+          <div class="title">
+            <span v-if="e.pinned" class="pin-mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="12" height="12">
+                <path d="M12 2l2.4 6.2 6.6.5-5 4.3 1.5 6.4L12 16l-5.5 3.4 1.5-6.4-5-4.3 6.6-.5z" fill="currentColor"></path>
+              </svg>
+            </span>
+            <span>{{ e.title }}</span>
+          </div>
           <div class="ops">
+            <button class="btn-ghost pin-btn" :class="{ 'pin-on': e.pinned }" @click="togglePin(e)">
+              {{ e.pinned ? $t('list.unpin') : $t('list.pin') }}
+            </button>
             <button class="btn-ghost" @click="startEdit(e)">{{ $t('list.edit') }}</button>
             <button class="btn-danger" @click="remove(e)">{{ $t('list.delete') }}</button>
           </div>
@@ -86,19 +108,25 @@
         <div class="entry-meta">
           <div class="meta-line">
             <span class="label">{{ $t('modal.url') }}:</span>
-            <span class="field" @click="copyText(e.url)">{{ e.url || $t('list.none') }}</span>
+            <span class="field" @click="copyText(e.url)">{{ e.url ? (revealed.has(e.id + ':url') ? e.url : '••••••••') : $t('list.none') }}</span>
+            <button v-if="e.url" class="mini" @click="toggleReveal(e.id, 'url')">
+              {{ revealed.has(e.id + ':url') ? $t('list.hide') : $t('list.show') }}
+            </button>
             <button v-if="e.url" class="copy-btn" @click="copyText(e.url)">{{ $t('list.copy') }}</button>
           </div>
           <div class="meta-line">
             <span class="label">{{ $t('modal.username') }}:</span>
-            <span class="field" @click="copyText(e.username)">{{ e.username || $t('list.none') }}</span>
+            <span class="field" @click="copyText(e.username)">{{ e.username ? (revealed.has(e.id + ':user') ? e.username : '••••••••') : $t('list.none') }}</span>
+            <button v-if="e.username" class="mini" @click="toggleReveal(e.id, 'user')">
+              {{ revealed.has(e.id + ':user') ? $t('list.hide') : $t('list.show') }}
+            </button>
             <button v-if="e.username" class="copy-btn" @click="copyText(e.username)">{{ $t('list.copy') }}</button>
           </div>
           <div class="meta-line">
             <span class="label">{{ $t('modal.password') }}:</span>
-            <span class="mono field" @click="copyText(e.password)">{{ revealed.has(e.id) ? e.password : '••••••••' }}</span>
-            <button class="mini" @click="toggleReveal(e.id)">
-              {{ revealed.has(e.id) ? $t('list.hide') : $t('list.show') }}
+            <span class="mono field" @click="copyText(e.password)">{{ revealed.has(e.id + ':pwd') ? e.password : '••••••••' }}</span>
+            <button class="mini" @click="toggleReveal(e.id, 'pwd')">
+              {{ revealed.has(e.id + ':pwd') ? $t('list.hide') : $t('list.show') }}
             </button>
             <button class="copy-btn" @click="copyText(e.password)">{{ $t('list.copy') }}</button>
           </div>
@@ -147,13 +175,37 @@
         <h2>{{ $t('sync.title') }}</h2>
         <label>{{ $t('sync.server') }}</label>
         <div class="server-row">
-          <input v-model="server" :placeholder="$t('sync.serverPlaceholder')" />
+          <input v-model="server" :placeholder="$t('sync.serverPlaceholder')" @blur="loadTrustInfo" />
           <button class="btn-ghost scan-btn" @click="scanLan">{{ $t('sync.scan') }}</button>
+        </div>
+        <!-- 已信任的证书指纹：便于用户与服务器端展示值核对 -->
+        <div v-if="trustedFingerprint" class="fp-box inline-fp">
+          <div class="fp-label">{{ $t('sync.fpLabel') }}</div>
+          <div class="fp-value">{{ trustedFingerprint }}</div>
+        </div>
+        <!-- 已确认的服务器地址（可在原生确认框之外撤销，PT-11） -->
+        <div v-if="allowedServers.length" class="allowed-list">
+          <div class="allowed-title">{{ $t('sync.allowedTitle') }}</div>
+          <div v-for="s in allowedServers" :key="s" class="allowed-item">
+            <span class="allowed-host">{{ s }}</span>
+            <button class="link-btn" @click="removeAllowed(s)">{{ $t('sync.allowedRemove') }}</button>
+          </div>
         </div>
         <div v-if="scanning" class="scan-status">{{ $t('sync.scanning') }}</div>
         <div v-if="lanServers && lanServers.length" class="lan-list">
-          <button v-for="s in lanServers" :key="s" class="lan-item" @click="server = s">{{ s }}</button>
+          <button v-for="s in lanServers" :key="s.url" class="lan-item" @click="pickLan(s)">
+            <span class="lan-badge" :class="s.secure ? 'lan-secure' : 'lan-plain'">
+              {{ s.secure ? 'HTTPS' : 'HTTP' }}
+            </span>
+            <span class="lan-url">{{ s.url }}</span>
+          </button>
         </div>
+        <!-- 明文模式风险提示（用户显式输入 http:// 时） -->
+        <p v-if="isPlaintext" class="plaintext-warn">
+          {{ $t('sync.plaintextWarn') }}
+          <button class="link-btn" @click="useHttps">{{ $t('sync.useHttps') }}</button>
+        </p>
+        <p v-if="secretDegraded" class="secret-warn">{{ $t('sync.secretFileWarn') }}</p>
         <label>{{ $t('sync.username') }}</label>
         <input v-model="serverUsername" />
         <template v-if="serverLoginMode === 'register'">
@@ -173,6 +225,16 @@
             <input type="checkbox" v-model="rememberMe" />
             <span>{{ $t('sync.remember') }}</span>
           </label>
+        </template>
+        <!-- 密码曾被重置时的恢复路径：旧密码恢复（数据无损）或清空重建 -->
+        <template v-if="vaultRecovery">
+          <p class="recovery-hint">{{ $t('sync.recoverPrompt') }}</p>
+          <label>{{ $t('sync.recoverOldPassword') }}</label>
+          <input v-model="oldPassword" type="password" />
+          <div class="modal-actions" style="margin-top: 8px">
+            <button class="btn-ghost" @click="resetVaultRemote">{{ $t('sync.resetVault') }}</button>
+            <button class="btn-primary" @click="recoverVault">{{ $t('sync.recoverSubmit') }}</button>
+          </div>
         </template>
         <div class="modal-actions" style="margin-top: 8px">
           <template v-if="serverLoginMode === 'register'">
@@ -200,6 +262,10 @@
         <label class="checkbox-row">
           <input type="checkbox" v-model="settingsForm.autosync" />
           <span>{{ $t('settings.autosync') }}</span>
+        </label>
+        <label class="checkbox-row" v-if="loggedIn">
+          <input type="checkbox" v-model="pinSync" @change="changePinSync" />
+          <span>{{ $t('settings.pinSync') }}</span>
         </label>
         <div class="settings-group">
           <div class="settings-label">{{ $t('settings.priority') }}</div>
@@ -254,7 +320,7 @@
         </div>
         <div class="modal-actions">
           <button class="btn-ghost" @click="trashShow = false">{{ $t('modal.cancel') }}</button>
-          <button class="btn-danger" @click="doEmptyTrash">{{ $t('trash.emptyTrash') }}</button>
+          <button class="btn-danger" :disabled="trash.length === 0" @click="doEmptyTrash">{{ $t('trash.emptyTrash') }}</button>
         </div>
       </div>
     </div>
@@ -294,12 +360,18 @@ export default {
       error: '',
       msg: '',
       revealed: new Set(),
+      // 拖拽排序状态：dragId 为被拖动条目，dragOverId 为当前悬停目标
+      dragId: null,
+      dragOverId: null,
       editing: null,
       form: this.emptyForm(),
       formShow: false,
       serverLoginOpen: false,
       userMenuOpen: false,
       serverLoginMode: 'login',
+      // 密码重置后的恢复模式：用旧密码恢复原密码库，或清空后重新开始。
+      vaultRecovery: false,
+      oldPassword: '',
       server: '',
       serverUsername: '',
       serverPassword: '',
@@ -308,12 +380,22 @@ export default {
       rememberMe: false,
       lanServers: [],
       scanning: false,
-      serverToken: localStorage.getItem('serverToken') || '',
+      // 已确认的服务器地址（PT-11 白名单，可在同步弹窗中撤销）
+      allowedServers: [],
+      // 当前已信任的证书指纹（展示用，便于用户与服务器端核对）
+      trustedFingerprint: '',
+      // 凭据库后端："keyring" | "file"（file 表示已降级，需提示用户）
+      secretBackend: '',
+      // 登录态（令牌本体由 Rust 侧保管，前端不持有原始 JWT，见 PT-06）
+      loggedIn: false,
       myAvatar: localStorage.getItem('myAvatar') || '',
       ioFormat: '',
       toastTimer: null,
+      idleTimer: null,
+      idleTimeout: 5 * 60 * 1000, // 5 分钟无操作自动锁定
       settingsShow: false,
       settingsForm: { autostart: false, autosync: false, priority: 'local', recycle: true, recycleDays: 30 },
+      pinSync: false,
       recycleEnabled: true,
       trashShow: false,
       trash: [],
@@ -329,10 +411,23 @@ export default {
         [e.title, e.username, e.url, e.category].some((s) => (s || '').toLowerCase().includes(q))
       )
     },
+    // 拖拽排序：仅在未搜索（列表即完整顺序）且条目多于一条时启用，
+    // 否则拖动的只是筛选结果，落库顺序会与所见不符。
+    canDrag() {
+      return !this.search.trim() && this.entries.length > 1
+    },
     avatarUrl() {
       if (!this.myAvatar) return ''
       const id = this.myAvatar.replace(/\.[^.]+$/, '')
       return this.server.replace(/\/$/, '') + '/api/avatar/' + id
+    },
+    // 是否使用明文 HTTP（提示风险并提供一键改用 HTTPS）
+    isPlaintext() {
+      return /^http:\/\//i.test((this.server || '').trim())
+    },
+    // 凭据库是否已降级为本地文件（Linux 无桌面密钥环时）
+    secretDegraded() {
+      return this.secretBackend === 'file'
     }
   },
   watch: {
@@ -340,6 +435,7 @@ export default {
     error(v) { if (v) this.autoClearToast('error') }
   },
   async mounted() {
+    this.setupIdleLock()
     // 从托盘恢复窗口时，同步锁定状态（隐藏到托盘时后端已清除主密钥）
     await listen('window-shown', async () => {
       try {
@@ -362,20 +458,27 @@ export default {
       } catch (e) {
         /* 忽略，保持默认走回收站 */
       }
-      this.server = localStorage.getItem('syncServer') || cfg.server || ''
-      this.serverUsername = localStorage.getItem('syncUsername') || cfg.username || ''
-      const savedPassword = localStorage.getItem('syncPassword') || ''
-      if (savedPassword) {
-        this.serverPassword = savedPassword
-        this.rememberMe = true
-      }
-      if (this.serverToken && this.server) {
+      // 会话状态由 Rust 侧给出（令牌经系统凭据库持久化，前端不接触）。
+      const sess = await api.SessionInfo()
+      this.server = localStorage.getItem('syncServer') || cfg.server || sess.server || ''
+      this.serverUsername = localStorage.getItem('syncUsername') || cfg.username || sess.username || ''
+      this.loggedIn = sess.loggedIn === '1'
+      // 清理历史版本可能遗留的明文口令与令牌：同步口令是主密钥派生源，绝不落盘。
+      localStorage.removeItem('syncPassword')
+      localStorage.removeItem('serverToken')
+      this.rememberMe = !!localStorage.getItem('syncUsername')
+      if (this.loggedIn && this.server) {
         try {
-          await api.SyncCheck(this.server, this.serverToken)
+          await api.SyncCheck(this.server)
         } catch (e) {
-          this.serverToken = ''
-          localStorage.removeItem('serverToken')
-          localStorage.removeItem('myAvatar')
+          // 证书信任问题不代表会话失效（用户确认信任后即可恢复）；
+          // 其余错误视为会话已失效，清除本地会话状态。
+          const msg = String(e)
+          if (!/NEED_TRUST|FINGERPRINT_CHANGED/.test(msg)) {
+            await api.ClearSession()
+            this.loggedIn = false
+            localStorage.removeItem('myAvatar')
+          }
         }
       }
     } catch (e) {
@@ -391,6 +494,50 @@ export default {
       this.toastTimer = setTimeout(() => {
         this[key] = ''
       }, 3000)
+    },
+    // 统一把错误转成用户可读文案：
+    //   · LOCAL_LOCKED → 引导先解锁本地密码库（破坏性同步命令的前置要求）
+    //   · NEED_TRUST / FINGERPRINT_CHANGED → 服务器证书信任问题（正常会被弹窗拦截）
+    //   · 其余错误已由 Rust 侧翻译为可读提示，直接展示
+    errText(e) {
+      const msg = String(e)
+      if (msg.includes('LOCAL_LOCKED')) return this.$t('sync.needUnlock')
+      if (msg.includes('NOT_LOGGED_IN')) return this.$t('sync.notLoggedIn')
+      // 用户在原生确认框中拒绝连接（地址白名单 / 证书指纹）。
+      if (msg.includes('TRUST_DENIED')) return this.$t('sync.trustDenied')
+      if (msg.includes('FINGERPRINT_CHANGED')) return this.$t('sync.fpChanged')
+      return msg
+    },
+    // 加载已确认的服务器与已信任的指纹（展示用）。
+    async loadTrustInfo() {
+      try {
+        this.allowedServers = (await api.ListAllowedServers()) || []
+      } catch (e) {
+        this.allowedServers = []
+      }
+      try {
+        this.trustedFingerprint = this.server ? await api.GetTrustedFingerprint(this.server) : ''
+      } catch (e) {
+        this.trustedFingerprint = ''
+      }
+    },
+    // 撤销某服务器的确认：下次连接会重新弹出原生确认框。
+    async removeAllowed(host) {
+      this.error = ''
+      try {
+        await api.RemoveAllowedServer(host)
+        await this.loadTrustInfo()
+      } catch (e) {
+        this.error = this.errText(e)
+      }
+    },
+    // 选择局域网发现结果（https 项优先展示）
+    pickLan(s) {
+      this.server = s.url
+    },
+    // 把当前明文地址改为 https（服务端同端口双协议，通常可直接切换）
+    useHttps() {
+      this.server = (this.server || '').replace(/^http:\/\//i, 'https://')
     },
     changeLang() {
       this.$i18n.locale = this.lang
@@ -425,6 +572,23 @@ export default {
       this.vaultUnlocked = false
       this.entries = []
       this.revealed.clear()
+    },
+    setupIdleLock() {
+      const events = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'scroll']
+      const reset = () => {
+        if (!this.vaultUnlocked) return
+        clearTimeout(this.idleTimer)
+        this.idleTimer = setTimeout(() => { this.lock() }, this.idleTimeout)
+      }
+      events.forEach((ev) => window.addEventListener(ev, reset, { passive: true }))
+      reset()
+      // 窗口失焦 / 页面隐藏（切换应用、最小化、锁屏）时立即锁定，避免密钥长期驻留内存。
+      window.addEventListener('blur', () => {
+        if (this.vaultUnlocked) this.lock()
+      })
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden && this.vaultUnlocked) this.lock()
+      })
     },
     startAdd() {
       this.form = this.emptyForm()
@@ -465,16 +629,68 @@ export default {
       })
     },
     async autoSync() {
-      if (!this.serverToken) return
+      if (!this.loggedIn) return
       try {
-        await api.PushVault(this.server, this.serverToken)
+        await api.PushVault(this.server)
       } catch (e) {
         /* 自动同步失败不阻断本地操作 */
       }
     },
-    toggleReveal(id) {
-      if (this.revealed.has(id)) this.revealed.delete(id)
-      else this.revealed.add(id)
+    // 显示/隐藏切换：按「条目 id + 字段」记录，可在本条目的各字段之间独立开关。
+    toggleReveal(id, field) {
+      const k = id + ':' + field
+      if (this.revealed.has(k)) this.revealed.delete(k)
+      else this.revealed.add(k)
+    },
+    async togglePin(e) {
+      try {
+        await api.PinEntry(e.id, !e.pinned)
+        await this.loadEntries()
+        this.msg = e.pinned ? this.$t('msg.unpinned') : this.$t('msg.pinned')
+      } catch (err) {
+        this.error = String(err)
+      }
+    },
+    onDragStart(e) {
+      if (!this.canDrag) return
+      this.dragId = e.id
+    },
+    onDragOver(e) {
+      if (this.dragId != null && this.dragId !== e.id) this.dragOverId = e.id
+    },
+    onDragLeave(e) {
+      if (this.dragOverId === e.id) this.dragOverId = null
+    },
+    onDragEnd() {
+      this.dragId = null
+      this.dragOverId = null
+    },
+    async onDrop(target) {
+      const from = this.dragId
+      this.dragId = null
+      this.dragOverId = null
+      if (from == null || from === target.id) return
+      const list = this.entries.slice()
+      const fi = list.findIndex((x) => x.id === from)
+      const ti = list.findIndex((x) => x.id === target.id)
+      if (fi < 0 || ti < 0) return
+      // 置顶与普通条目分属两组，不允许互相拖入（否则会被排序规则弹回原位）。
+      if (list[fi].pinned !== list[ti].pinned) {
+        this.msg = this.$t('msg.pinGroupOnly')
+        return
+      }
+      const [moved] = list.splice(fi, 1)
+      list.splice(ti, 0, moved)
+      this.entries = list
+      try {
+        await api.ReorderEntries(list.map((x) => x.id))
+        await this.loadEntries()
+        // 顺序属于同步内容：落库后推送一次，使其他设备保持一致。
+        await this.autoSync()
+      } catch (e) {
+        this.error = String(e)
+        await this.loadEntries()
+      }
     },
     async copyText(text) {
       if (!text) return
@@ -560,7 +776,10 @@ export default {
       try {
         const keys = ['title', 'username', 'password', 'url', 'category', 'notes']
         const header = keys.map((k) => this.fieldName('modal.' + k)).join(',')
-        const path = await api.SaveTextFile('\ufeff' + header + '\r\n', this.$t('app.title') + ' - ' + this.$t('file.template') + '.csv')
+        // 附带一条示例数据，导入后可直接看到各列含义（密码建议导入前自行替换）。
+        const example = ['示例网站', 'myuser', 'MyPass123', 'https://example.com', '常用', '这是一条示例备注，可删除']
+        const csv = '\ufeff' + header + '\r\n' + example.map(csvEscape).join(',') + '\r\n'
+        const path = await api.SaveTextFile(csv, this.$t('app.title') + ' - ' + this.$t('file.template') + '.csv')
         if (path) this.msg = this.$t('msg.saved')
       } catch (e) {
         this.error = String(e)
@@ -572,10 +791,19 @@ export default {
       this.serverLoginMode = 'login'
       this.lanServers = []
       this.scanning = false
-      const savedPassword = localStorage.getItem('syncPassword') || ''
-      this.serverPassword = savedPassword
-      this.rememberMe = !!savedPassword
+      this.serverPassword = ''
+      this.rememberMe = !!localStorage.getItem('syncUsername')
       this.serverLoginOpen = true
+      this.checkSecretBackend()
+      this.loadTrustInfo()
+    },
+    // 检测同步密钥的存储后端，降级时提示用户（Linux 无桌面密钥环时）。
+    async checkSecretBackend() {
+      try {
+        this.secretBackend = await api.GetSecretBackend()
+      } catch (e) {
+        this.secretBackend = ''
+      }
     },
     async scanLan() {
       this.error = ''
@@ -598,13 +826,22 @@ export default {
     async doLogin() {
       await this.auth(false)
     },
-    doLogout() {
-      this.serverToken = ''
+    async doLogout() {
+      // 令牌保存在 Rust 侧 + 系统凭据库，退出需通知后端清除（前端无令牌可清）。
+      try {
+        await api.ClearSession()
+      } catch (e) {
+        /* 清理失败不阻断退出流程 */
+      }
+      this.loggedIn = false
       this.serverPassword = ''
       this.myAvatar = ''
       this.userMenuOpen = false
       localStorage.removeItem('serverToken')
       localStorage.removeItem('myAvatar')
+      localStorage.removeItem('syncPassword')
+      localStorage.removeItem('syncServer')
+      localStorage.removeItem('syncUsername')
       this.msg = this.$t('sync.loggedOut')
     },
     async auth(isRegister) {
@@ -613,24 +850,64 @@ export default {
         const r = isRegister
           ? await api.SyncRegister(this.server, this.serverUsername, this.serverPassword, this.serverEmail, this.serverCode)
           : await api.SyncLogin(this.server, this.serverUsername, this.serverPassword)
-        this.serverToken = r.token
+        // 令牌已由 Rust 侧保存（内存 + 系统凭据库），前端只置登录态；
+        // 服务端不再把原始 JWT 下发给 WebView（PT-06）。
+        this.loggedIn = true
         this.myAvatar = r.avatar || ''
-        localStorage.setItem('serverToken', r.token)
         localStorage.setItem('myAvatar', r.avatar || '')
-        localStorage.setItem('syncServer', this.server)
-        localStorage.setItem('syncUsername', this.serverUsername)
+        // 同步口令不持久化：它同时是端到端加密主密钥的派生源，明文落盘等于交出密码库。
+        // 「记住我」仅用于记忆同步服务器地址与账号名。
+        localStorage.removeItem('syncPassword')
+        localStorage.removeItem('serverToken')
         if (this.rememberMe) {
-          localStorage.setItem('syncPassword', this.serverPassword)
+          localStorage.setItem('syncServer', this.server)
+          localStorage.setItem('syncUsername', this.serverUsername)
         } else {
-          localStorage.removeItem('syncPassword')
+          localStorage.removeItem('syncServer')
+          localStorage.removeItem('syncUsername')
         }
         this.msg = isRegister ? this.$t('msg.registerSuccess') : this.$t('msg.loginSuccess')
         this.serverLoginOpen = false
+        this.vaultRecovery = false
+        this.oldPassword = ''
         this.serverPassword = ''
         this.serverEmail = ''
         this.serverCode = ''
       } catch (e) {
-        this.error = String(e)
+        const msg = String(e)
+        if (msg.includes('VAULT_KEY_MISMATCH')) {
+          // 账号密码曾被重置：旧 vault key 无法用新密码解开，展示恢复入口。
+          this.vaultRecovery = true
+          this.error = this.$t('sync.recoverPrompt')
+        } else {
+          this.error = this.errText(e)
+        }
+      }
+    },
+    // 用旧密码恢复原密码库（数据无损）：本地解开旧 vault key 后用新密码重新包裹上传。
+    async recoverVault() {
+      this.error = ''
+      try {
+        await api.RecoverVault(this.server, this.serverUsername, this.serverPassword, this.oldPassword)
+        this.vaultRecovery = false
+        this.oldPassword = ''
+        // 本地 vault key 已重新持久化，重新登录完成同步状态建立。
+        await this.auth(false)
+      } catch (e) {
+        const msg = String(e)
+        this.error = msg.includes('OLD_PASSWORD_WRONG') ? this.$t('sync.recoverFailed') : this.errText(e)
+      }
+    },
+    // 放弃旧密码库（不可恢复）：清空服务端旧密文与本地缓存，之后自动生成新 vault key。
+    async resetVaultRemote() {
+      this.error = ''
+      try {
+        await api.ResetVaultRemote(this.server, this.serverUsername, this.serverPassword)
+        this.vaultRecovery = false
+        this.oldPassword = ''
+        await this.auth(false)
+      } catch (e) {
+        this.error = this.errText(e)
       }
     },
     async sendRegCode() {
@@ -639,26 +916,26 @@ export default {
         await api.SendRegisterCode(this.server, this.serverEmail)
         this.msg = this.$t('sync.codeSent')
       } catch (e) {
-        this.error = String(e)
+        this.error = this.errText(e)
       }
     },
     async doPush() {
       this.error = ''
       try {
-        await api.PushVault(this.server, this.serverToken)
+        await api.PushVault(this.server)
         this.msg = this.$t('msg.uploaded')
       } catch (e) {
-        this.error = String(e)
+        this.error = this.errText(e)
       }
     },
     async doPull() {
       this.error = ''
       try {
-        const n = await api.PullVault(this.server, this.serverToken)
+        const n = await api.PullVault(this.server)
         this.msg = this.$t('msg.downloaded', { n })
         await this.loadEntries()
       } catch (e) {
-        this.error = String(e)
+        this.error = this.errText(e)
       }
     },
     async openSettings() {
@@ -674,7 +951,31 @@ export default {
       } catch (e) {
         this.settingsForm = { autostart: false, autosync: false, priority: 'local', recycle: true, recycleDays: 30 }
       }
+      // 置顶同步为账号级设置（保存在服务端），仅在已登录时可读改。
+      this.pinSync = false
+      if (this.loggedIn && this.server) {
+        try {
+          this.pinSync = await api.GetPinSync(this.server)
+        } catch (e) {
+          /* 读取失败按关闭展示，用户改动时会再次尝试 */
+        }
+      }
       this.settingsShow = true
+    },
+    async changePinSync() {
+      try {
+        await api.SetPinSync(this.server, this.pinSync)
+        this.msg = this.$t('settings.saved')
+        this.autoClearToast('msg')
+      } catch (e) {
+        this.error = this.errText(e)
+        // 失败时回读真实状态，避免勾选框与服务端不一致。
+        try {
+          this.pinSync = await api.GetPinSync(this.server)
+        } catch (e2) {
+          /* ignore */
+        }
+      }
     },
     async saveSettings() {
       try {
@@ -739,18 +1040,18 @@ export default {
     async maybeAutoSync() {
       try {
         const s = await api.GetSettings()
-        if (s.autosync !== '1' || !this.serverToken || !this.server) return
+        if (s.autosync !== '1' || !this.loggedIn || !this.server) return
         let n = 0
         if (s.priority === 'server') {
-          n = await api.PullVault(this.server, this.serverToken)
+          n = await api.PullVault(this.server)
           await this.loadEntries()
           this.msg = this.$t('settings.autoPulled', { n })
         } else if (s.priority === 'merge') {
-          n = await api.MergeVault(this.server, this.serverToken)
+          n = await api.MergeVault(this.server)
           await this.loadEntries()
           this.msg = this.$t('settings.autoMerged', { n })
         } else {
-          await api.PushVault(this.server, this.serverToken)
+          await api.PushVault(this.server)
           this.msg = this.$t('settings.autoPushed')
         }
         this.autoClearToast('msg')
@@ -764,6 +1065,11 @@ export default {
 </script>
 
 <style scoped>
+/* 禁用态按钮（如回收站为空时的「清空回收站」）：灰显且不可点击 */
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 .gate {
   height: 100%;
   display: flex;
@@ -919,6 +1225,37 @@ export default {
   padding: 12px 16px;
   border-radius: 8px;
   border: 1px solid #e5e7eb;
+  transition: border-color 0.15s, background 0.15s;
+}
+/* 仅当可拖拽时给出抓取光标（搜索状态下不启用拖拽） */
+.entry[draggable='true'] {
+  cursor: grab;
+}
+.entry.entry-dragging {
+  opacity: 0.45;
+}
+.entry.entry-drop-target {
+  border-color: var(--fnos-primary);
+  background: #f5f9ff;
+}
+.entry-pinned {
+  border-left: 3px solid var(--fnos-primary);
+}
+.entry-head .title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.pin-mark {
+  display: inline-flex;
+  align-items: center;
+  color: var(--fnos-primary);
+  flex-shrink: 0;
+}
+.pin-btn.pin-on {
+  color: var(--fnos-primary);
+  border-color: var(--fnos-primary);
 }
 .entry-head {
   display: flex;
@@ -1121,6 +1458,16 @@ export default {
   color: #374151;
   font-size: 13px;
 }
+.recovery-hint {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #92400e;
+  line-height: 1.6;
+}
 .settings-group {
   margin-top: 10px;
   padding: 8px 10px;
@@ -1176,6 +1523,9 @@ export default {
   overflow-y: auto;
 }
 .lan-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   text-align: left;
   background: #eef2f7;
   color: #1f2937;
@@ -1186,6 +1536,101 @@ export default {
 .lan-item:hover {
   background: var(--fnos-primary-light);
   opacity: 1;
+}
+.lan-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.lan-secure {
+  background: #dcfce7;
+  color: #166534;
+}
+.lan-plain {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.lan-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plaintext-warn {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  color: #991b1b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--fnos-primary, #2563eb);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  text-decoration: underline;
+}
+.inline-fp {
+  margin-top: 6px;
+}
+.allowed-list {
+  margin-top: 6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+.allowed-title {
+  color: #6b7280;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.allowed-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  padding: 2px 0;
+}
+.allowed-host {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #374151;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fp-box {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 10px;
+}
+.fp-label {
+  color: #6b7280;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.fp-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #111827;
+  word-break: break-all;
+  line-height: 1.5;
+}
+.secret-warn {
+  margin: 6px 0 0;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
 }
 .form-row {
   display: flex;

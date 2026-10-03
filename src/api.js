@@ -1,7 +1,6 @@
 // Tauri IPC 适配层：保持旧 Wails 前端调用方式（api.Init() 等 PascalCase 方法名）。
 // 命令名：Tauri 命令名即 Rust 函数名（snake_case），不会自动转 camelCase。
 import { invoke } from '@tauri-apps/api/core'
-import { open, save } from '@tauri-apps/plugin-dialog'
 
 export default {
   Init: () => invoke('init_db'),
@@ -12,60 +11,64 @@ export default {
   ListEntries: () => invoke('list_entries'),
   SaveEntry: (entry) => invoke('save_entry', { entry }),
   DeleteEntry: (id, soft) => invoke('delete_entry', { id, soft }),
+  // 置顶与顺序调整：置顶仅影响本设备显示顺序；拖拽排序写入 sort_order（随同步传播）。
+  PinEntry: (id, pinned) => invoke('pin_entry', { id, pinned }),
+  ReorderEntries: (ids) => invoke('reorder_entries', { ids }),
   ListTrash: () => invoke('list_trash'),
   RestoreEntry: (id) => invoke('restore_entry', { id }),
   PurgeEntry: (id) => invoke('purge_entry', { id }),
   EmptyTrash: () => invoke('empty_trash'),
 
-  // 导入 CSV：弹出文件选择框（支持 Chrome / Edge 导出的 CSV）
-  ImportDialog: async () => {
-    const path = await open({
-      title: '导入密码（支持 Chrome / Edge 导出的 CSV）',
-      multiple: false,
-      filters: [{ name: 'CSV', extensions: ['csv'] }]
-    })
-    if (!path) return 0
-    return invoke('import_csv', { path })
-  },
+  // 导入 / 导出：文件对话框与读写均在 Rust 侧完成（PT-08），
+  // 渲染层不再传递任何路径，因此无法让后端读写任意文件。
+  ImportDialog: () => invoke('import_csv'),
 
-  // 导入 TXT：弹出文件选择框
-  ImportTextDialog: async () => {
-    const path = await open({
-      title: '导入密码 TXT',
-      multiple: false,
-      filters: [{ name: 'TXT', extensions: ['txt'] }]
-    })
-    if (!path) return 0
-    return invoke('import_txt', { path })
-  },
+  ImportTextDialog: () => invoke('import_txt'),
 
-  // 保存文本文件：弹出保存框 + 写入内容
-  SaveTextFile: async (content, filename) => {
-    const path = await save({ title: '保存文件', defaultPath: filename })
-    if (!path) return ''
-    await invoke('save_text_file', { path, content })
-    return path
-  },
+  // 保存文本文件（导出 / 模板下载共用）：filename 仅用于对话框默认文件名
+  SaveTextFile: (content, filename) => invoke('save_text_file', { content, filename }),
 
-  // 下载 CSV 导入模板
-  DownloadTemplateDialog: async () => {
-    const path = await save({ title: '下载 CSV 模板', defaultPath: 'passbook-template.csv' })
-    if (!path) return ''
-    await invoke('save_text_file', { path, content: '\ufeffname,username,password,url,category,notes\n' })
-    return path
-  },
+  // 下载 CSV 导入模板（示例行与服务端模板保持一致）
+  DownloadTemplateDialog: () =>
+    invoke('save_text_file', {
+      content:
+        '\ufeffname,username,password,url,category,notes\n' +
+        '示例网站,myuser,MyPass123,https://example.com,常用,这是一条示例备注，可删除\n',
+      filename: 'passbook-template.csv'
+    }),
 
   GetServerConfig: () => invoke('get_server_config'),
+  // 会话令牌由 Rust 侧保管并经系统凭据库持久化，前端只查询登录态（PT-06）。
+  SessionInfo: () => invoke('session_info'),
+  ClearSession: () => invoke('clear_session'),
   SyncRegister: (server, username, password, email, code) =>
     invoke('sync_register', { server, username, password, email, code }),
   SyncLogin: (server, username, password) => invoke('sync_login', { server, username, password }),
-  SyncCheck: (server, token) => invoke('sync_check', { server, token }),
+  // 密码重置后的恢复路径：旧密码恢复（数据无损）或清空重建
+  RecoverVault: (server, username, currentPassword, oldPassword) =>
+    invoke('recover_vault', { server, username, currentPassword, oldPassword }),
+  ResetVaultRemote: (server, username, password) =>
+    invoke('reset_vault_remote', { server, username, password }),
+  // 以下命令不再接收令牌：统一使用 Rust 侧保存的当前会话。
+  SyncCheck: (server) => invoke('sync_check', { server }),
   SendRegisterCode: (server, email) => invoke('sync_send_code', { server, email }),
-  PushVault: (server, token) => invoke('push_vault', { server, token }),
-  PullVault: (server, token) => invoke('pull_vault', { server, token }),
-  MergeVault: (server, token) => invoke('merge_vault', { server, token }),
+  PushVault: (server) => invoke('push_vault', { server }),
+  PullVault: (server) => invoke('pull_vault', { server }),
+  MergeVault: (server) => invoke('merge_vault', { server }),
   ScanLAN: () => invoke('scan_lan'),
+  // 服务器信任管理（PT-02 / PT-11）：
+  // 「首次连接确认」「地址白名单」「指纹变更确认」均由 Rust 侧原生对话框完成，
+  // 渲染层没有直接写入信任记录的能力。
+  ListAllowedServers: () => invoke('list_allowed_servers'),
+  RemoveAllowedServer: (server) => invoke('remove_allowed_server', { server }),
+  ForgetServerTrust: (server) => invoke('forget_server_trust', { server }),
+  GetTrustedFingerprint: (server) => invoke('get_trusted_fingerprint', { server }),
+  // 凭据库后端（"keyring" / "file"），用于提示「已降级为文件存储」。
+  GetSecretBackend: () => invoke('get_secret_backend'),
   GetSettings: () => invoke('get_settings'),
   SaveSettings: (autostart, autosync, priority, recycle, recycleDays) =>
-    invoke('save_settings', { autostart, autosync, priority, recycle, recycleDays })
+    invoke('save_settings', { autostart, autosync, priority, recycle, recycleDays }),
+  // 置顶同步开关（账号级，保存在服务端，桌面端/网页端共用）。
+  GetPinSync: (server) => invoke('get_pin_sync', { server }),
+  SetPinSync: (server, enabled) => invoke('set_pin_sync', { server, enabled })
 }

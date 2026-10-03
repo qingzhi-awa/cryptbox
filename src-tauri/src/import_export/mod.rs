@@ -26,6 +26,16 @@ pub fn export_txt(path: &str, list: &[Entry]) -> Result<i64, String> {
     Ok(list.len() as i64)
 }
 
+/// CSV 公式注入防护：Excel/WPS 会将以 = + - @ \t \r 开头的字段当作公式执行
+/// （如 DDE 注入）。导出时统一前置单引号，强制按文本处理。
+fn csv_safe(v: &str) -> String {
+    if v.starts_with(['=', '+', '-', '@', '\t', '\r']) {
+        format!("'{}", v)
+    } else {
+        v.to_string()
+    }
+}
+
 pub fn export_csv(path: &str, list: &[Entry]) -> Result<i64, String> {
     let mut f = fs::File::create(path).map_err(|e| e.to_string())?;
     f.write_all(b"\xef\xbb\xbf").map_err(|e| e.to_string())?; // UTF-8 BOM
@@ -33,8 +43,15 @@ pub fn export_csv(path: &str, list: &[Entry]) -> Result<i64, String> {
     wtr.write_record(&["name", "username", "password", "url", "category", "notes"])
         .map_err(|e| e.to_string())?;
     for e in list {
-        wtr.write_record(&[&e.title, &e.username, &e.password, &e.url, &e.category, &e.notes])
-            .map_err(|e| e.to_string())?;
+        wtr.write_record(&[
+            csv_safe(&e.title),
+            csv_safe(&e.username),
+            csv_safe(&e.password),
+            csv_safe(&e.url),
+            csv_safe(&e.category),
+            csv_safe(&e.notes),
+        ])
+        .map_err(|e| e.to_string())?;
     }
     wtr.flush().map_err(|e| e.to_string())?;
     Ok(list.len() as i64)
@@ -123,6 +140,8 @@ fn parse_csv_data(data: &[u8]) -> Result<Vec<Entry>, String> {
         let row = result.map_err(|e| e.to_string())?;
         let e = Entry {
             id: 0,
+            uuid: String::new(),
+            pinned: false,
             sort_order: 0,
             title: get(&row, "title"),
             username: get(&row, "username"),
@@ -147,12 +166,35 @@ pub fn parse_txt_file(path: &str) -> Result<Vec<Entry>, String> {
     parse_txt_data(&data)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::csv_safe;
+
+    #[test]
+    fn dangerous_prefixes_are_prefixed() {
+        for d in ["=cmd|'/c calc'!A0", "+SUM(A1)", "-1", "@import", "\tx", "\ry"] {
+            assert!(csv_safe(d).starts_with('\''), "应加前缀: {}", d);
+        }
+    }
+
+    #[test]
+    fn normal_values_untouched() {
+        assert_eq!(csv_safe("hello"), "hello");
+        assert_eq!(csv_safe(""), "");
+        // 中间位置的 = 不转义，只有开头才危险
+        assert_eq!(csv_safe("a=b"), "a=b");
+        assert_eq!(csv_safe("user@mail.com"), "user@mail.com");
+    }
+}
+
 fn parse_txt_data(data: &[u8]) -> Result<Vec<Entry>, String> {
     let decoded = decode(data);
     let text = decoded.replace("\r\n", "\n").replace('\r', "\n");
     let mut entries: Vec<Entry> = Vec::new();
     let mut cur = Entry {
         id: 0,
+        uuid: String::new(),
+        pinned: false,
         sort_order: 0,
         title: String::new(),
         username: String::new(),
@@ -178,6 +220,8 @@ fn parse_txt_data(data: &[u8]) -> Result<Vec<Entry>, String> {
                 }
                 cur = Entry {
                     id: 0,
+                    uuid: String::new(),
+                    pinned: false,
                     sort_order: 0,
                     title: String::new(),
                     username: String::new(),
@@ -203,6 +247,8 @@ fn parse_txt_data(data: &[u8]) -> Result<Vec<Entry>, String> {
                     }
                     cur = Entry {
                         id: 0,
+                        uuid: String::new(),
+                        pinned: false,
                         sort_order: 0,
                         title: String::new(),
                         username: String::new(),

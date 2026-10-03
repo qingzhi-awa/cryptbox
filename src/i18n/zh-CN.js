@@ -1,6 +1,6 @@
 export default {
   app: { title: '密匣' },
-  file: { template: '导入模板' },
+  file: { template: '密码导入模板' },
   gate: {
     unlockHint: '请输入密码解锁',
     setupHint: '首次使用，请设置登录密码',
@@ -11,8 +11,8 @@ export default {
     wrongPassword: '主密码错误'
   },
   header: { sync: '同步', export: '导出', exportCsv: '导出 CSV', lock: '锁定' },
-  toolbar: { search: '搜索标题 / 用户名 / 网址 / 分类', add: '+ 新增', io: '导入 / 导出', import: '导入', export: '导出', template: '下载导入模板', settings: '设置' },
-  list: { empty: '暂无记录，点击「新增」开始', show: '查看', hide: '隐藏', edit: '编辑', delete: '删除', copy: '复制', none: '无' },
+  toolbar: { search: '搜索标题 / 用户名 / 网址 / 分类', add: '+ 新增', io: '导入 / 导出', import: '导入', export: '导出', template: '下载密码模板', settings: '设置' },
+  list: { empty: '暂无记录，点击「新增」开始', show: '查看', hide: '隐藏', edit: '编辑', delete: '删除', copy: '复制', none: '无', pin: '置顶', unpin: '取消置顶', dragHint: '按住拖动可调整顺序' },
   modal: {
     addTitle: '新增密码',
     editTitle: '编辑密码',
@@ -40,7 +40,10 @@ export default {
     uploaded: '已上传到服务器',
     loginSuccess: '登录成功',
     registerSuccess: '注册成功，已登录',
-    copied: '已复制'
+    copied: '已复制',
+    pinned: '已置顶',
+    unpinned: '已取消置顶',
+    pinGroupOnly: '置顶条目与普通条目之间不能互换位置，请先取消置顶'
   },
   sync: {
     title: '同步到服务器',
@@ -59,10 +62,25 @@ export default {
     code: '邮箱验证码',
     sendCode: '发送验证码',
     codeSent: '验证码已发送',
-    remember: '记住密码',
+    remember: '记住账号',
     scan: '扫描局域网',
     scanning: '扫描中...',
-    noServer: '未发现局域网内的同步服务器'
+    noServer: '未发现局域网内的同步服务器',
+    recoverPrompt: '检测到账号密码曾被重置，原密码库仍由旧密码加密：可输入旧密码恢复全部数据（推荐），或清空后重新开始。',
+    recoverOldPassword: '重置前使用的旧密码',
+    recoverSubmit: '用旧密码恢复密码库',
+    recoverFailed: '旧密码不正确，无法恢复原密码库',
+    needUnlock: '请先解锁本地密码库，再进行同步操作',
+    notLoggedIn: '登录状态已失效，请重新登录同步账号',
+    resetVault: '清空密码库重新开始',
+    fpLabel: '已信任的证书指纹（SHA-256）',
+    allowedTitle: '已确认的服务器',
+    allowedRemove: '撤销确认',
+    trustDenied: '已取消：未确认该服务器，不会向其发送任何数据',
+    fpChanged: '服务器证书指纹与已信任记录不一致，连接已被拒绝',
+    plaintextWarn: '当前使用明文 HTTP：传输未加密，也无法验证服务器身份。建议改用 HTTPS。',
+    useHttps: '改用 HTTPS',
+    secretFileWarn: '系统凭据库不可用，同步密钥已降级为本地文件存储（权限 0600）。'
   },
   settings: {
     title: '设置',
@@ -75,6 +93,7 @@ export default {
     hint: '提示：本地/服务端优先为整库覆盖；合并按记录时间戳逐条取较新者，删除会同步传播。自动同步需已登录服务端。',
     recycle: '删除回收站',
     recycleOn: '删除时移入回收站（可恢复）',
+    pinSync: '在所有设备间同步置顶状态',
     recycleDays: '回收站保留天数',
     saved: '设置已保存',
     autoPushed: '已自动同步：本地数据已上传',

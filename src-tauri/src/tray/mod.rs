@@ -29,7 +29,7 @@ pub fn setup_tray(app: &AppHandle) {
                 api.prevent_close();
                 let _ = w.hide();
                 if let Some(state) = app_handle.try_state::<crate::app::AppState>() {
-                    *state.key.lock().unwrap() = None;
+                    crate::app::clear_key(&state);
                 }
             }
         });

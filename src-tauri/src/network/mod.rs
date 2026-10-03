@@ -1,14 +1,41 @@
-// 网络模块：局域网同步服务器发现（扫描 TCP 5201 的 /api/health）。
+// 网络模块：局域网同步服务器发现（PT-10）。
+//
+// 旧实现只探测明文 `http://ip:5201/api/health`，且判定条件宽松（状态 200 +
+// 响应体含 "ok"）——任意 HTTP 服务都很容易伪造成"同步服务器"（钓鱼）。
+// 现改为：
+//   · 同一主机同时探测 https 与 http，**优先展示 https**；
+//   · 判定改为校验 `/api/status` 的 JSON 结构（必须含 `initialized` 字段）；
+//   · https 结果附带对端证书指纹，供用户在界面上一并核对。
 use std::collections::HashSet;
 use std::net::Ipv4Addr;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use serde::Serialize;
+
+use crate::sync::pinning;
+
 const SYNC_PORT: u16 = 5201;
 
-/// 扫描局域网内可用的 CryPtBox 同步服务器，返回形如 http://ip:5201 的地址列表。
-pub fn scan_lan() -> Result<Vec<String>, String> {
+/// 局域网发现到的一台同步服务器。
+#[derive(Serialize, Clone)]
+pub struct LanServer {
+    /// 归一化后的访问地址（形如 https://192.168.1.5:5201）。
+    pub url: String,
+    /// "https" 或 "http"。
+    pub scheme: String,
+    /// 是否加密（https）。
+    pub secure: bool,
+    /// 对端证书指纹（仅 https 有效，冒号分隔大写十六进制）。
+    pub fingerprint: String,
+    /// 是否已由受信 CA 校验通过（自签为 false，需用户确认信任）。
+    pub verified: bool,
+}
+
+/// 扫描局域网内可用的 CryPtBox 同步服务器。
+/// 返回结果已按「加密优先」排序。
+pub fn scan_lan() -> Result<Vec<LanServer>, String> {
     let local_ips = local_ipv4s();
     if local_ips.is_empty() {
         return Err("未检测到局域网地址".into());
@@ -26,27 +53,22 @@ pub fn scan_lan() -> Result<Vec<String>, String> {
         }
     }
 
+    // 明文探测共享一个客户端（克隆开销极小）。
+    // https 探测需要「每主机独立的证书观测槽位」，故在 probe_host_secure 内部按需创建。
+    let plain_client = pinning::plain_client();
+
     let results = Arc::new(Mutex::new(Vec::new()));
     let mut handles = Vec::new();
     for host in host_set {
         let results = Arc::clone(&results);
+        let plain_client = plain_client.clone();
         handles.push(thread::spawn(move || {
-            let url = format!("http://{}:{}/api/health", host, SYNC_PORT);
-            let client = reqwest::blocking::Client::builder()
-                .timeout(Duration::from_millis(400))
-                .build()
-                .unwrap_or_default();
-            if let Ok(resp) = client.get(&url).send() {
-                if resp.status().is_success() {
-                    if let Ok(body) = resp.text() {
-                        if body.contains("ok") {
-                            results
-                                .lock()
-                                .unwrap()
-                                .push(format!("http://{}:{}", host, SYNC_PORT));
-                        }
-                    }
-                }
+            if let Some(s) = probe_host_secure(&host) {
+                results.lock().unwrap().push(s);
+                return; // 已加密即最优结果，不再探测明文
+            }
+            if let Some(s) = probe_host_plain(&plain_client, &host) {
+                results.lock().unwrap().push(s);
             }
         }));
     }
@@ -55,8 +77,59 @@ pub fn scan_lan() -> Result<Vec<String>, String> {
     }
 
     let mut list = results.lock().unwrap().clone();
-    list.sort();
+    // 加密优先，其次按地址排序（结果稳定可复现）。
+    list.sort_by(|a, b| {
+        b.secure
+            .cmp(&a.secure)
+            .then_with(|| a.url.cmp(&b.url))
+    });
     Ok(list)
+}
+
+/// HTTPS 探测：走 https 并取回对端证书指纹（自签可通过握手，指纹待用户确认）。
+fn probe_host_secure(host: &str) -> Option<LanServer> {
+    let url = format!("https://{}:{}/api/status", host, SYNC_PORT);
+    let (body, fingerprint) = pinning::fetch_with_fingerprint(&url, Duration::from_millis(500))?;
+    if !looks_like_cryptbox(&body) {
+        return None;
+    }
+    Some(LanServer {
+        url: format!("https://{}:{}", host, SYNC_PORT),
+        scheme: "https".to_string(),
+        secure: true,
+        fingerprint,
+        // 自签证书无法由系统 CA 校验通过；标记为待用户确认。
+        verified: false,
+    })
+}
+
+/// 明文 HTTP 探测（无加密、无身份校验）。
+fn probe_host_plain(client: &reqwest::blocking::Client, host: &str) -> Option<LanServer> {
+    let url = format!("http://{}:{}/api/status", host, SYNC_PORT);
+    let resp = client.get(&url).send().ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let body = resp.text().ok()?;
+    if !looks_like_cryptbox(&body) {
+        return None;
+    }
+    Some(LanServer {
+        url: format!("http://{}:{}", host, SYNC_PORT),
+        scheme: "http".to_string(),
+        secure: false,
+        fingerprint: String::new(),
+        verified: false,
+    })
+}
+
+/// 判定响应是否为 CryPtBox 服务端：`/api/status` 的 JSON 必须包含 `initialized`（布尔）。
+/// 比旧版的「状态码 200 且正文含 ok」严格得多，降低伪造服务器与误报概率。
+fn looks_like_cryptbox(body: &str) -> bool {
+    match serde_json::from_str::<serde_json::Value>(body) {
+        Ok(v) => v.get("initialized").map(|x| x.is_boolean()).unwrap_or(false),
+        Err(_) => false,
+    }
 }
 
 /// 返回本机所有非回环的 IPv4 地址。
@@ -78,4 +151,21 @@ fn local_ipv4s() -> Vec<Ipv4Addr> {
 fn is_private_ipv4(ip: &Ipv4Addr) -> bool {
     let o = ip.octets();
     o[0] == 10 || (o[0] == 172 && o[1] >= 16 && o[1] <= 31) || (o[0] == 192 && o[1] == 168)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_structure_validation_is_strict() {
+        assert!(looks_like_cryptbox(r#"{"initialized":true,"build":"abc"}"#));
+        assert!(looks_like_cryptbox(r#"{"initialized":false,"build":"abc"}"#));
+        // 旧判定（正文含 ok）会误报的样本，现在应被拒绝：
+        assert!(!looks_like_cryptbox("ok"));
+        assert!(!looks_like_cryptbox(r#"{"status":"ok"}"#), "缺少 initialized 字段应拒绝");
+        assert!(!looks_like_cryptbox(r#"{"initialized":"yes"}"#), "initialize 非布尔应拒绝");
+        assert!(!looks_like_cryptbox("<html>ok</html>"));
+        assert!(!looks_like_cryptbox(""));
+    }
 }

@@ -6,6 +6,7 @@ mod app;
 mod crypto;
 mod import_export;
 mod network;
+mod secret;
 mod settings;
 mod store;
 mod sync;
@@ -33,6 +34,8 @@ pub fn run() {
             app::list_entries,
             app::save_entry,
             app::delete_entry,
+            app::pin_entry,
+            app::reorder_entries,
             app::list_trash,
             app::restore_entry,
             app::purge_entry,
@@ -43,6 +46,8 @@ pub fn run() {
             app::import_txt,
             app::save_text_file,
             app::get_server_config,
+            app::session_info,
+            app::clear_session,
             app::sync_register,
             app::sync_login,
             app::sync_check,
@@ -50,7 +55,16 @@ pub fn run() {
             app::push_vault,
             app::pull_vault,
             app::merge_vault,
+            app::get_pin_sync,
+            app::set_pin_sync,
+            app::recover_vault,
+            app::reset_vault_remote,
             app::scan_lan,
+            app::list_allowed_servers,
+            app::remove_allowed_server,
+            app::forget_server_trust,
+            app::get_trusted_fingerprint,
+            app::get_secret_backend,
             app::get_settings,
             app::save_settings,
         ])

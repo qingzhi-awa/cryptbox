@@ -1,17 +1,22 @@
 // 同步模块：对接服务端 API（登录/注册/校验/上传/下载/合并）。
-use reqwest::blocking::Client;
+use reqwest::blocking::{Client, Response};
 use serde::Deserialize;
 use std::time::Duration;
 
 use crate::store::Entry;
+
+pub mod pinning;
 
 /// 同步服务默认端口（与飞牛端 TCP 监听端口一致）。
 const DEFAULT_PORT: u16 = 5201;
 
 /// 归一化服务器地址，支持多种输入形态：
 /// - 完整 URL（含 scheme）→ 原样（去尾部 /）
-/// - IP[:端口] / localhost[:端口] → http://（缺端口时补 5201）
+/// - IP[:端口] / localhost[:端口] → **https://**（缺端口时补 5201）
 /// - 域名[:端口] → https://
+///
+/// 注意：自 PT-02 起，未显式填写 scheme 的地址一律默认走 **加密的 HTTPS**；
+/// 只有用户**显式输入 `http://…`** 才会走明文（服务端同端口双协议仍兼容）。
 pub fn normalize_server_url(input: &str) -> String {
     let s = input.trim();
     if s.is_empty() {
@@ -23,16 +28,12 @@ pub fn normalize_server_url(input: &str) -> String {
 
     // 含 : → host:port
     if s.contains(':') {
-        let host = s.split(':').next().unwrap_or("");
-        if is_ipv4(host) || host == "localhost" {
-            return format!("http://{}", s);
-        }
         return format!("https://{}", s);
     }
 
-    // 无端口：IP 或 localhost → http + 默认端口；域名 → https
+    // 无端口：IP / localhost → https + 默认端口；域名 → https（缺省 443，反向代理场景）
     if is_ipv4(s) || s == "localhost" {
-        return format!("http://{}:{}", s, DEFAULT_PORT);
+        return format!("https://{}:{}", s, DEFAULT_PORT);
     }
     format!("https://{}", s)
 }
@@ -48,31 +49,89 @@ fn is_ipv4(s: &str) -> bool {
     })
 }
 
+/// 把 HTTP 状态码翻译成用户可读的提示，避免把实现细节（状态码/英文）直接抛给用户。
+/// 401/403 → 会话失效；429 → 频率限制；5xx → 服务端暂时异常；其余为通用失败。
+fn friendly_http_error(prefix: &str, status: reqwest::StatusCode) -> String {
+    let code = status.as_u16();
+    let detail = match code {
+        401 | 403 => "登录状态已失效，请重新登录",
+        429 => "操作过于频繁，请稍后再试",
+        400 => "请求被服务器拒绝，请检查输入内容",
+        413 => "数据过大，服务器拒绝接收",
+        c if c >= 500 => "服务器暂时无法处理，请稍后重试",
+        _ => "请求失败，请检查网络与服务器地址",
+    };
+    format!("{}：{}", prefix, detail)
+}
+
+/// 把网络层错误翻译成用户可读的提示（区分为超时 / 连不上 / 其他）。
+fn friendly_net_error(prefix: &str, e: reqwest::Error) -> String {
+    if e.is_timeout() {
+        format!("{}：连接超时，请检查服务器地址与网络", prefix)
+    } else if e.is_connect() {
+        format!("{}：无法连接到服务器，请确认地址、端口与证书信任状态", prefix)
+    } else {
+        format!("{}：{}", prefix, e)
+    }
+}
+
 pub struct SyncClient {
     base_url: String,
     token: Option<String>,
+    /// 已信任的对端证书指纹（HTTPS 时用于逐次响应校验，封堵探测与请求之间的时间窗）。
+    pinned_fp: Option<String>,
+    /// HTTPS 时持有「可观测对端证书」的客户端，用于指纹固定。
+    observed: Option<pinning::ObservedClient>,
     client: Client,
 }
 
 pub struct AuthResult {
     pub token: String,
     pub avatar: String,
+    pub vault_key_enc: String,
+    pub kdf_salt: String,
 }
 
 impl SyncClient {
     pub fn new(base_url: &str) -> Self {
+        let base_url = normalize_server_url(base_url);
+        // HTTPS → 自定义校验器客户端（自签可通过握手，但会记录对端证书以便固定指纹）；
+        // 明文 HTTP → 普通客户端（无身份校验，由界面提示风险）。
+        let observed = if pinning::is_https(&base_url) {
+            pinning::observed_client(None, Duration::from_secs(15)).ok()
+        } else {
+            None
+        };
+        let client = observed
+            .as_ref()
+            .map(|o| o.client.clone())
+            .unwrap_or_else(pinning::plain_client);
         Self {
-            base_url: normalize_server_url(base_url),
+            base_url,
             token: None,
-            client: Client::builder()
-                .timeout(Duration::from_secs(15))
-                .build()
-                .unwrap_or_default(),
+            pinned_fp: None,
+            observed,
+            client,
         }
     }
 
     pub fn with_token(mut self, token: &str) -> Self {
         self.token = Some(token.to_string());
+        self
+    }
+
+    /// 设置已信任的证书指纹。
+    ///
+    /// 重建客户端：把指纹交给 rustls 校验器，**握手阶段**即拒绝不一致的证书——
+    /// 保证任何凭据都不会发往指纹不符的服务器；响应阶段再校验一次作为兜底。
+    pub fn with_pinned_fp(mut self, fp: &str) -> Self {
+        self.pinned_fp = Some(fp.to_string());
+        if pinning::is_https(&self.base_url) {
+            if let Ok(oc) = pinning::observed_client(Some(fp.to_string()), Duration::from_secs(15)) {
+                self.client = oc.client.clone();
+                self.observed = Some(oc);
+            }
+        }
         self
     }
 
@@ -86,18 +145,44 @@ impl SyncClient {
         }
     }
 
+    /// 发送请求并校验对端证书指纹（HTTPS 且已固定时）。
+    fn send(&self, req: reqwest::blocking::RequestBuilder) -> Result<Response, String> {
+        let resp = req.send().map_err(|e| friendly_net_error("网络请求失败", e))?;
+        if let Some(expected) = &self.pinned_fp {
+            let actual = self
+                .observed
+                .as_ref()
+                .and_then(|o| o.observed_fingerprint())
+                .unwrap_or_default();
+            if actual.is_empty() || &actual != expected {
+                return Err(format!(
+                    "{}:{}|{}|{}",
+                    pinning::ERR_FP_CHANGED,
+                    pinning::authority(&self.base_url),
+                    actual,
+                    expected
+                ));
+            }
+        }
+        Ok(resp)
+    }
+
     pub fn register(
         &self,
         username: &str,
         password: &str,
         email: &str,
         code: &str,
+        vault_key_enc: &str,
+        kdf_salt: &str,
     ) -> Result<AuthResult, String> {
         let body = serde_json::json!({
             "username": username,
             "password": password,
             "email": email,
             "code": code,
+            "vault_key_enc": vault_key_enc,
+            "kdf_salt": kdf_salt,
         });
         self.auth_request("/api/register", body)
     }
@@ -118,31 +203,47 @@ impl SyncClient {
             #[serde(default)]
             avatar: String,
             #[serde(default)]
+            vault_key_enc: String,
+            #[serde(default)]
+            kdf_salt: String,
+            #[serde(default)]
             error: String,
         }
-        let resp = self
-            .client
-            .post(format!("{}{}", self.base_url, path))
-            .json(&body)
-            .send()
-            .map_err(|e| e.to_string())?;
+        let resp = self.send(self.client.post(format!("{}{}", self.base_url, path)).json(&body))?;
         let status = resp.status();
         let text = resp.text().map_err(|e| e.to_string())?;
         let out: AuthResponse = serde_json::from_str(&text).unwrap_or(AuthResponse {
             token: String::new(),
             avatar: String::new(),
+            vault_key_enc: String::new(),
+            kdf_salt: String::new(),
             error: String::new(),
         });
         if !status.is_success() {
             if !out.error.is_empty() {
                 return Err(out.error);
             }
-            return Err(format!("请求失败: {}", status));
+            return Err(friendly_http_error("请求失败", status));
         }
         Ok(AuthResult {
             token: out.token,
             avatar: out.avatar,
+            vault_key_enc: out.vault_key_enc,
+            kdf_salt: out.kdf_salt,
         })
+    }
+
+    pub fn put_vault_key(&self, vault_key_enc: &str) -> Result<(), String> {
+        let body = serde_json::json!({ "vault_key_enc": vault_key_enc });
+        let resp = self.send(
+            self.auth_header(self.client.put(format!("{}/api/vault-key", self.base_url)))
+                .json(&body),
+        )?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(friendly_http_error("上传密钥失败", resp.status()))
+        }
     }
 
     pub fn send_register_code(&self, email: &str) -> Result<(), String> {
@@ -151,12 +252,11 @@ impl SyncClient {
             error: String,
         }
         let body = serde_json::json!({ "email": email });
-        let resp = self
-            .client
-            .post(format!("{}/api/register/send-code", self.base_url))
-            .json(&body)
-            .send()
-            .map_err(|e| e.to_string())?;
+        let resp = self.send(
+            self.client
+                .post(format!("{}/api/register/send-code", self.base_url))
+                .json(&body),
+        )?;
         if resp.status().is_success() {
             Ok(())
         } else {
@@ -165,7 +265,7 @@ impl SyncClient {
                 error: String::new(),
             });
             if e.error.is_empty() {
-                Err("请求失败".into())
+                Err("请求失败，请稍后重试".into())
             } else {
                 Err(e.error)
             }
@@ -173,70 +273,162 @@ impl SyncClient {
     }
 
     pub fn check(&self) -> Result<(), String> {
-        let resp = self
-            .auth_header(self.client.get(format!("{}/api/me", self.base_url)))
-            .send()
-            .map_err(|e| e.to_string())?;
+        let resp = self.send(self.auth_header(self.client.get(format!("{}/api/me", self.base_url))))?;
         if resp.status().is_success() {
             Ok(())
         } else {
-            Err(format!("token 无效: {}", resp.status()))
+            Err(friendly_http_error("登录状态校验失败", resp.status()))
         }
     }
 
     pub fn push(&self, entries: &[Entry]) -> Result<(), String> {
         let body = serde_json::json!({ "entries": entries });
-        let resp = self
-            .auth_header(self.client.put(format!("{}/api/vault", self.base_url)))
-            .json(&body)
-            .send()
-            .map_err(|e| e.to_string())?;
+        let resp = self.send(
+            self.auth_header(self.client.put(format!("{}/api/vault", self.base_url)))
+                .json(&body),
+        )?;
         if resp.status().is_success() {
             Ok(())
         } else {
-            Err(format!("推送失败: {}", resp.status()))
+            Err(friendly_http_error("推送失败", resp.status()))
         }
     }
 
-    pub fn pull(&self) -> Result<Vec<Entry>, String> {
+    pub fn pull(&self) -> Result<(Vec<Entry>, bool), String> {
         #[derive(Deserialize)]
         struct VaultResp {
             entries: Vec<Entry>,
+            /// 账号级「置顶参与同步」开关：开启时客户端应采纳服务端置顶状态。
+            #[serde(default)]
+            pin_sync: bool,
         }
-        let resp = self
-            .auth_header(self.client.get(format!("{}/api/vault", self.base_url)))
-            .send()
-            .map_err(|e| e.to_string())?;
+        let resp = self.send(self.auth_header(self.client.get(format!("{}/api/vault", self.base_url))))?;
         if !resp.status().is_success() {
-            return Err(format!("下载失败: {}", resp.status()));
+            return Err(friendly_http_error("下载失败", resp.status()));
         }
         let out: VaultResp = resp.json().map_err(|e| e.to_string())?;
-        Ok(out.entries)
+        Ok((out.entries, out.pin_sync))
+    }
+
+    /// 读取账号级「置顶参与同步」开关。
+    pub fn pin_sync(&self) -> Result<bool, String> {
+        #[derive(Deserialize)]
+        struct Resp {
+            #[serde(default)]
+            pin_sync: bool,
+        }
+        let resp =
+            self.send(self.auth_header(self.client.get(format!("{}/api/vault/pin-sync", self.base_url))))?;
+        if !resp.status().is_success() {
+            return Err(friendly_http_error("读取置顶同步设置失败", resp.status()));
+        }
+        let out: Resp = resp.json().map_err(|e| e.to_string())?;
+        Ok(out.pin_sync)
+    }
+
+    /// 修改账号级「置顶参与同步」开关（服务端按账号保存，两端共用）。
+    pub fn set_pin_sync(&self, enabled: bool) -> Result<(), String> {
+        let resp = self.send(
+            self.auth_header(self.client.post(format!("{}/api/vault/pin-sync", self.base_url)))
+                .json(&serde_json::json!({ "enabled": enabled })),
+        )?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(friendly_http_error("保存置顶同步设置失败", resp.status()))
+        }
+    }
+
+    /// 清空服务端密码库并重置 vault key（密码重置后放弃旧数据，不可恢复）。
+    pub fn delete_vault(&self) -> Result<(), String> {
+        let resp = self.send(self.auth_header(self.client.delete(format!("{}/api/vault", self.base_url))))?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(friendly_http_error("清空密码库失败", resp.status()))
+        }
     }
 }
 
-/// 合并两份条目：按 id 归并，同 id 比较 updated_at，较新者覆盖较旧者。
+/// 合并两份条目（PT-04）：优先按全局唯一标识 `uuid` 归并，同一条目比较
+/// `updated_at`、较新者覆盖较旧者；两侧 uuid 均为空时回退按本地 `id`（兼容旧协议）。
+///
+/// 为衔接"刚升级完成"的混合状态，先做一次**归一化**：若某条 uuid 为空、而同 id 的
+/// 另一条已有 uuid，则认定二者是同一条目并采用该 uuid——避免升级后首次合并把
+/// 同一条目当成两条（重复条目）。
 pub fn merge_entries(local: &[Entry], remote: &[Entry]) -> Vec<Entry> {
     use std::collections::HashMap;
-    let mut map: HashMap<i64, Entry> = HashMap::new();
-    let mut order: Vec<i64> = Vec::new();
-    for e in local {
-        if !map.contains_key(&e.id) {
-            order.push(e.id);
+
+    // 1) id → uuid（优先取非空者），用于把存量条目的空 uuid 归一化。
+    let mut id_to_uuid: HashMap<i64, String> = HashMap::new();
+    for e in local.iter().chain(remote.iter()) {
+        if !e.uuid.is_empty() {
+            id_to_uuid.entry(e.id).or_insert_with(|| e.uuid.clone());
         }
-        map.insert(e.id, e.clone());
     }
-    for e in remote {
-        if let Some(cur) = map.get(&e.id) {
-            if newer(&e.updated_at, &cur.updated_at) {
-                map.insert(e.id, e.clone());
+    let normalize = |e: &Entry| -> Entry {
+        let mut c = e.clone();
+        if c.uuid.is_empty() {
+            if let Some(u) = id_to_uuid.get(&c.id) {
+                c.uuid = u.clone();
             }
+        }
+        c
+    };
+    // 2) 归并键：有 uuid 用 uuid（全局唯一），否则退回本地 id。
+    let key_of = |e: &Entry| -> String {
+        if e.uuid.is_empty() {
+            format!("i:{}", e.id)
         } else {
-            order.push(e.id);
-            map.insert(e.id, e.clone());
+            format!("u:{}", e.uuid)
+        }
+    };
+
+    let mut map: HashMap<String, Entry> = HashMap::new();
+    let mut order: Vec<String> = Vec::new();
+    for e in local.iter().map(normalize) {
+        let k = key_of(&e);
+        if !map.contains_key(&k) {
+            order.push(k.clone());
+        }
+        map.insert(k, e);
+    }
+    for e in remote.iter().map(normalize) {
+        let k = key_of(&e);
+        match map.get(&k) {
+            Some(cur) if !newer(&e.updated_at, &cur.updated_at) => {}
+            Some(_) => {
+                map.insert(k, e);
+            }
+            None => {
+                order.push(k.clone());
+                map.insert(k, e);
+            }
         }
     }
-    order.into_iter().filter_map(|id| map.remove(&id)).collect()
+    ensure_unique_ids(order.into_iter().filter_map(|k| map.remove(&k)).collect())
+}
+
+/// 保证合并结果内本地 id 不重复（PT-04 的必要配套）。
+///
+/// uuid 才是条目身份，但服务端仍以 `(user_id, id)` 为复合主键：若合并后出现两条
+/// 相同 id 的条目（典型场景：两台设备各自新建了 id=1 的不同条目），整批上传会因
+/// 主键冲突失败、或被去重逻辑丢弃。因此对重复/非正的 id 重新分配未占用的编号。
+/// 分配顺序确定（按合并结果顺序），因此各端得到一致结果、不会来回抖动。
+fn ensure_unique_ids(list: Vec<Entry>) -> Vec<Entry> {
+    use std::collections::HashSet;
+    let mut next = list.iter().map(|e| e.id).max().unwrap_or(0) + 1;
+    let mut used: HashSet<i64> = HashSet::new();
+    list.into_iter()
+        .map(|mut e| {
+            if e.id <= 0 || used.contains(&e.id) {
+                e.id = next;
+                next += 1;
+            }
+            used.insert(e.id);
+            e
+        })
+        .collect()
 }
 
 fn newer(a: &str, b: &str) -> bool {
@@ -248,3 +440,35 @@ fn newer(a: &str, b: &str) -> bool {
         _ => a > b,
     }
 }
+
+/// 置顶同步开启时，合并后以**服务端**的置顶状态为准：
+/// 按 uuid 归并（空 uuid 的旧条目回退按 id）。仅在服务端存在的条目不受影响，
+/// 本地新增条目保留本机置顶（随后随整库上传到服务端）。
+pub fn apply_remote_pins(entries: &mut [Entry], remote: &[Entry]) {
+    use std::collections::HashMap;
+    let mut by_uuid: HashMap<String, bool> = HashMap::new();
+    let mut by_id: HashMap<i64, bool> = HashMap::new();
+    for e in remote {
+        if !e.uuid.is_empty() {
+            by_uuid.insert(e.uuid.clone(), e.pinned);
+        }
+        by_id.insert(e.id, e.pinned);
+    }
+    for e in entries.iter_mut() {
+        let pinned = if !e.uuid.is_empty() {
+            by_uuid
+                .get(&e.uuid)
+                .or_else(|| by_id.get(&e.id))
+                .copied()
+        } else {
+            by_id.get(&e.id).copied()
+        };
+        if let Some(p) = pinned {
+            e.pinned = p;
+        }
+    }
+}
+
+// 渗透测试集成用例（默认 #[ignore]，需显式指定环境变量与 --ignored 才运行）。
+#[cfg(test)]
+mod pentest_tests;
