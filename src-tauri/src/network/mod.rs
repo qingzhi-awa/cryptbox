@@ -8,6 +8,7 @@
 //   · https 结果附带对端证书指纹，供用户在界面上一并核对。
 use std::collections::HashSet;
 use std::net::Ipv4Addr;
+use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -17,6 +18,17 @@ use serde::Serialize;
 use crate::sync::pinning;
 
 const SYNC_PORT: u16 = 5201;
+
+/// 并发探测的固定工作线程数。
+/// 早期实现「每主机一个线程」：双网卡 /24 会瞬时创建 500+ 线程，且每个线程在
+/// https 优先探测里还要新建 ObservedClient（含 rustls ClientConfig 构建 + 证书栈
+/// 初始化），资源开销与抖动都很大。改为固定大小线程池后 OS 线程数恒定。
+const SCAN_WORKERS: usize = 64;
+
+/// 单主机探测超时。
+/// https 探测失败后还会回退 http，因此最坏耗时约为该值的两倍；收敛到 400ms 量级
+/// 后，整段扫描（含超时主机）从「秒级 × N」降到可接受的几秒内。
+const PROBE_TIMEOUT: Duration = Duration::from_millis(400);
 
 /// 局域网发现到的一台同步服务器。
 #[derive(Serialize, Clone)]
@@ -54,24 +66,44 @@ pub fn scan_lan() -> Result<Vec<LanServer>, String> {
     }
 
     // 明文探测共享一个客户端（克隆开销极小）。
-    // https 探测需要「每主机独立的证书观测槽位」，故在 probe_host_secure 内部按需创建。
-    let plain_client = pinning::plain_client();
+    // 注意：不能用 pinning::plain_client()——它面向用户显式配置的服务器、超时 15s，
+    // 在局域网扫描里会让每个不存在的主机各拖满超时。这里用短超时的独立客户端。
+    let plain_client = reqwest::blocking::Client::builder()
+        .timeout(PROBE_TIMEOUT)
+        .build()
+        .unwrap_or_default();
 
+    // 固定大小工作线程池：通过共享通道分发主机，OS 线程数恒定（不再随网卡/网段膨胀）。
     let results = Arc::new(Mutex::new(Vec::new()));
-    let mut handles = Vec::new();
-    for host in host_set {
+    let (tx, rx) = mpsc::channel::<String>();
+    let rx = Arc::new(Mutex::new(rx));
+
+    let worker_count = SCAN_WORKERS.min(host_set.len().max(1));
+    let mut handles = Vec::with_capacity(worker_count);
+    for _ in 0..worker_count {
         let results = Arc::clone(&results);
         let plain_client = plain_client.clone();
-        handles.push(thread::spawn(move || {
+        let rx: Arc<Mutex<Receiver<String>>> = Arc::clone(&rx);
+        handles.push(thread::spawn(move || loop {
+            // 通道关闭或已取空即退出该 worker。
+            let host = match rx.lock().unwrap().recv() {
+                Ok(h) => h,
+                Err(_) => break,
+            };
             if let Some(s) = probe_host_secure(&host) {
                 results.lock().unwrap().push(s);
-                return; // 已加密即最优结果，不再探测明文
+                continue; // 已加密即最优结果，不再探测明文
             }
             if let Some(s) = probe_host_plain(&plain_client, &host) {
                 results.lock().unwrap().push(s);
             }
         }));
     }
+    // 投递全部主机后关闭发送端，worker 取空后自然退出。
+    for host in host_set {
+        let _ = tx.send(host);
+    }
+    drop(tx);
     for h in handles {
         let _ = h.join();
     }
@@ -89,7 +121,7 @@ pub fn scan_lan() -> Result<Vec<LanServer>, String> {
 /// HTTPS 探测：走 https 并取回对端证书指纹（自签可通过握手，指纹待用户确认）。
 fn probe_host_secure(host: &str) -> Option<LanServer> {
     let url = format!("https://{}:{}/api/status", host, SYNC_PORT);
-    let (body, fingerprint) = pinning::fetch_with_fingerprint(&url, Duration::from_millis(500))?;
+    let (body, fingerprint) = pinning::fetch_with_fingerprint(&url, PROBE_TIMEOUT)?;
     if !looks_like_cryptbox(&body) {
         return None;
     }

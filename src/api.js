@@ -51,6 +51,8 @@ export default {
     invoke('reset_vault_remote', { server, username, password }),
   // 以下命令不再接收令牌：统一使用 Rust 侧保存的当前会话。
   SyncCheck: (server) => invoke('sync_check', { server }),
+  // 头像端点要求登录，<img> 无法携带 JWT，由 Rust 侧代理拉取并转 data URL。
+  FetchAvatar: (server, id) => invoke('fetch_avatar', { server, id }),
   SendRegisterCode: (server, email) => invoke('sync_send_code', { server, email }),
   PushVault: (server) => invoke('push_vault', { server }),
   PullVault: (server) => invoke('pull_vault', { server }),

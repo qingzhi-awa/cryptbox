@@ -35,6 +35,15 @@ pub struct Entry {
     pub updated_at: String,
     #[serde(default)]
     pub deleted: bool,
+    /// **仅本机**的写入计数器：每次本地修改该条目时 +1。
+    ///
+    /// 它**不是**服务端版本号、也不参与跨端冲突比较——原因见 `sync::should_replace`：
+    /// 服务端每次整库上传都会重写全部条目，若把一个"服务端整库写入序号"当作条目
+    /// 版本用于跨端比较，未修改的条目也会被判定为"更新"，从而覆盖其他设备的真实改动。
+    ///
+    /// 该字段**不会**随同步上传给服务端（序列化键名刻意与 Go 端不同，Go 端也会忽略）。
+    #[serde(default)]
+    pub local_rev: i64,
 }
 
 /// 返回数据库文件路径：
@@ -90,7 +99,8 @@ pub fn open_store(path: &PathBuf) -> Result<Connection, String> {
             notes_enc TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            deleted INTEGER NOT NULL DEFAULT 0
+            deleted INTEGER NOT NULL DEFAULT 0,
+            revision INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS meta (
             key TEXT PRIMARY KEY,
@@ -121,6 +131,18 @@ pub fn open_store(path: &PathBuf) -> Result<Connection, String> {
     if !column_exists(&conn, "pinned")? {
         conn.execute(
             "ALTER TABLE entries ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    // 兼容旧库：为 entries 表补充 revision 列（若缺失）。
+    // 该列承载 Entry::local_rev —— **仅本机**的修改计数器，不参与跨端冲突裁决
+    // （裁决只按 updated_at，原因见 sync::should_replace）。列名保持 revision 是为了
+    // 不做无谓的 SQL 迁移；服务端下发的同名列会被单独解析、不写入本列。
+    if !column_exists(&conn, "revision")? {
+        conn.execute(
+            "ALTER TABLE entries ADD COLUMN revision INTEGER NOT NULL DEFAULT 0",
             [],
         )
         .map_err(|e| e.to_string())?;
@@ -206,6 +228,32 @@ pub fn set_meta(db: &Connection, key: &str, value: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// 原子写入多条 meta：要么全部成功，要么全部回滚（PT-11 补充）。
+///
+/// 用途：服务器信任记录由「地址白名单」与「证书指纹」两条记录共同构成，
+/// 若分开写会出现"白名单写了、指纹没写"的中间状态——此后该地址的任何证书
+/// 都无法被比对。这里用事务保证两条记录同生共死。
+pub fn set_meta_batch(db: &Connection, items: &[(String, String)]) -> Result<(), String> {
+    if items.is_empty() {
+        return Ok(());
+    }
+    // 事务内逐条写入；任何一条失败都会整体回滚，不留半截状态。
+    db.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
+    for (key, value) in items {
+        if let Err(e) = db.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+            params![key, value],
+        ) {
+            let _ = db.execute_batch("ROLLBACK");
+            return Err(e.to_string());
+        }
+    }
+    db.execute_batch("COMMIT").map_err(|e| {
+        let _ = db.execute_batch("ROLLBACK");
+        e.to_string()
+    })
+}
+
 /// 列出所有以指定前缀开头的 meta 键（用于枚举已确认的服务器地址等）。
 pub fn list_meta_keys_with_prefix(db: &Connection, prefix: &str) -> Vec<String> {
     let mut out = Vec::new();
@@ -233,58 +281,8 @@ pub fn delete_meta(db: &Connection, key: &str) -> Result<(), String> {
 pub fn list_entries(db: &Connection, key: &[u8; 32]) -> Result<Vec<Entry>, String> {
     let mut stmt = db
         .prepare(
-            "SELECT id, uuid, sort_order, title, username, password_enc, url, category, notes_enc, created_at, updated_at, pinned \
+            "SELECT id, uuid, sort_order, title, username, password_enc, url, category, notes_enc, created_at, updated_at, pinned, revision \
              FROM entries WHERE deleted = 0 ORDER BY pinned DESC, sort_order ASC, id ASC",
-        )
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, String>(4)?,
-                row.get::<_, String>(5)?,
-                row.get::<_, String>(6)?,
-                row.get::<_, String>(7)?,
-                row.get::<_, String>(8)?,
-                row.get::<_, String>(9)?,
-                row.get::<_, String>(10)?,
-                row.get::<_, i64>(11)?,
-            ))
-        })
-        .map_err(|e| e.to_string())?;
-    let mut list = Vec::new();
-    for r in rows {
-        let (id, uuid, sort_order, title, username, pw_enc, url, category, notes_enc, created_at, updated_at, pinned) =
-            r.map_err(|e| e.to_string())?;
-        let password = crypto::decrypt_string(key, &pw_enc).unwrap_or_default();
-        let notes = crypto::decrypt_string(key, &notes_enc).unwrap_or_default();
-        list.push(Entry {
-            id,
-            uuid,
-            pinned: pinned != 0,
-            sort_order,
-            title,
-            username,
-            password,
-            url,
-            category,
-            notes,
-            created_at,
-            updated_at,
-            deleted: false,
-        });
-    }
-    Ok(list)
-}
-
-pub fn list_entries_all(db: &Connection, key: &[u8; 32]) -> Result<Vec<Entry>, String> {
-    let mut stmt = db
-        .prepare(
-            "SELECT id, uuid, sort_order, title, username, password_enc, url, category, notes_enc, created_at, updated_at, deleted, pinned \
-             FROM entries ORDER BY pinned DESC, sort_order ASC, id ASC",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
@@ -308,7 +306,60 @@ pub fn list_entries_all(db: &Connection, key: &[u8; 32]) -> Result<Vec<Entry>, S
         .map_err(|e| e.to_string())?;
     let mut list = Vec::new();
     for r in rows {
-        let (id, uuid, sort_order, title, username, pw_enc, url, category, notes_enc, created_at, updated_at, deleted, pinned) =
+        let (id, uuid, sort_order, title, username, pw_enc, url, category, notes_enc, created_at, updated_at, pinned, local_rev) =
+            r.map_err(|e| e.to_string())?;
+        let password = crypto::decrypt_string(key, &pw_enc).unwrap_or_default();
+        let notes = crypto::decrypt_string(key, &notes_enc).unwrap_or_default();
+        list.push(Entry {
+            id,
+            uuid,
+            pinned: pinned != 0,
+            sort_order,
+            title,
+            username,
+            password,
+            url,
+            category,
+            notes,
+            created_at,
+            updated_at,
+            deleted: false,
+            local_rev,
+        });
+    }
+    Ok(list)
+}
+
+pub fn list_entries_all(db: &Connection, key: &[u8; 32]) -> Result<Vec<Entry>, String> {
+    let mut stmt = db
+        .prepare(
+            "SELECT id, uuid, sort_order, title, username, password_enc, url, category, notes_enc, created_at, updated_at, deleted, pinned, revision \
+             FROM entries ORDER BY pinned DESC, sort_order ASC, id ASC",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
+                row.get::<_, String>(7)?,
+                row.get::<_, String>(8)?,
+                row.get::<_, String>(9)?,
+                row.get::<_, String>(10)?,
+                row.get::<_, i64>(11)?,
+                row.get::<_, i64>(12)?,
+                row.get::<_, i64>(13)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+    let mut list = Vec::new();
+    for r in rows {
+        let (id, uuid, sort_order, title, username, pw_enc, url, category, notes_enc, created_at, updated_at, deleted, pinned, local_rev) =
             r.map_err(|e| e.to_string())?;
         let password = crypto::decrypt_string(key, &pw_enc).unwrap_or_default();
         let notes = crypto::decrypt_string(key, &notes_enc).unwrap_or_default();
@@ -326,6 +377,7 @@ pub fn list_entries_all(db: &Connection, key: &[u8; 32]) -> Result<Vec<Entry>, S
             created_at,
             updated_at,
             deleted: deleted != 0,
+            local_rev,
         });
     }
     Ok(list)
@@ -351,9 +403,11 @@ pub fn save_entry(db: &Connection, key: &[u8; 32], mut entry: Entry) -> Result<E
         if entry.uuid.is_empty() {
             entry.uuid = crypto::new_uuid_v4();
         }
+        // 新条目初始化本机修改计数器（仅本机使用，不上传参与冲突裁决）。
+        entry.local_rev += 1;
         db.execute(
-            "INSERT INTO entries (uuid, pinned, sort_order, title, username, password_enc, url, category, notes_enc, created_at, updated_at) \
-             VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO entries (uuid, pinned, sort_order, title, username, password_enc, url, category, notes_enc, created_at, updated_at, revision) \
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             params![
                 entry.uuid,
                 if entry.pinned { 1 } else { 0 },
@@ -365,7 +419,8 @@ pub fn save_entry(db: &Connection, key: &[u8; 32], mut entry: Entry) -> Result<E
                 entry.category,
                 notes_enc,
                 entry.created_at,
-                entry.updated_at
+                entry.updated_at,
+                entry.local_rev
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -381,8 +436,15 @@ pub fn save_entry(db: &Connection, key: &[u8; 32], mut entry: Entry) -> Result<E
                 })
                 .unwrap_or_default();
         }
+        // 本机修改递增计数器（取库中已有值与入参较大者 +1）。仅本机使用。
+        let prev_rev: i64 = db
+            .query_row("SELECT revision FROM entries WHERE id = ?", [entry.id], |r| {
+                r.get(0)
+            })
+            .unwrap_or(0);
+        entry.local_rev = prev_rev.max(entry.local_rev) + 1;
         db.execute(
-            "UPDATE entries SET uuid=?, title=?, username=?, password_enc=?, url=?, category=?, notes_enc=?, updated_at=? WHERE id=?",
+            "UPDATE entries SET uuid=?, title=?, username=?, password_enc=?, url=?, category=?, notes_enc=?, updated_at=?, revision=? WHERE id=?",
             params![
                 entry.uuid,
                 entry.title,
@@ -392,6 +454,7 @@ pub fn save_entry(db: &Connection, key: &[u8; 32], mut entry: Entry) -> Result<E
                 entry.category,
                 notes_enc,
                 entry.updated_at,
+                entry.local_rev,
                 entry.id
             ],
         )
@@ -479,7 +542,7 @@ pub fn purge_expired(db: &Connection, days: i64) -> Result<usize, String> {
 pub fn list_trash(db: &Connection, key: &[u8; 32]) -> Result<Vec<Entry>, String> {
     let mut stmt = db
         .prepare(
-            "SELECT id, uuid, sort_order, title, username, password_enc, url, category, notes_enc, created_at, updated_at, pinned \
+            "SELECT id, uuid, sort_order, title, username, password_enc, url, category, notes_enc, created_at, updated_at, pinned, revision \
              FROM entries WHERE deleted = 1 ORDER BY updated_at DESC",
         )
         .map_err(|e| e.to_string())?;
@@ -498,12 +561,13 @@ pub fn list_trash(db: &Connection, key: &[u8; 32]) -> Result<Vec<Entry>, String>
                 row.get::<_, String>(9)?,
                 row.get::<_, String>(10)?,
                 row.get::<_, i64>(11)?,
+                row.get::<_, i64>(12)?,
             ))
         })
         .map_err(|e| e.to_string())?;
     let mut list = Vec::new();
     for r in rows {
-        let (id, uuid, sort_order, title, username, pw_enc, url, category, notes_enc, created_at, updated_at, pinned) =
+        let (id, uuid, sort_order, title, username, pw_enc, url, category, notes_enc, created_at, updated_at, pinned, local_rev) =
             r.map_err(|e| e.to_string())?;
         let password = crypto::decrypt_string(key, &pw_enc).unwrap_or_default();
         let notes = crypto::decrypt_string(key, &notes_enc).unwrap_or_default();
@@ -521,6 +585,7 @@ pub fn list_trash(db: &Connection, key: &[u8; 32]) -> Result<Vec<Entry>, String>
             created_at,
             updated_at,
             deleted: true,
+            local_rev,
         });
     }
     Ok(list)
@@ -575,11 +640,14 @@ pub fn replace_entries(
             pinned = 1;
         }
         tx.execute(
-            "INSERT INTO entries (id, uuid, pinned, sort_order, title, username, password_enc, url, category, notes_enc, created_at, updated_at, deleted) \
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO entries (id, uuid, pinned, sort_order, title, username, password_enc, url, category, notes_enc, created_at, updated_at, deleted, revision) \
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             params![
                 e.id, e.uuid, pinned, e.sort_order, e.title, e.username, pw_enc, e.url, e.category, notes_enc,
-                e.created_at, e.updated_at, deleted
+                // 注意：这里写的是**本机计数器** e.local_rev，而不是服务端下发的 revision。
+                // 两者语义不同（前者=本机改了几次，后者=服务端整库被写过几次），混用会让
+                // 未修改的条目在跨端比较中"看起来更新"并覆盖他人改动。
+                e.created_at, e.updated_at, deleted, e.local_rev
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -648,6 +716,7 @@ mod tests {
             id: 0,
             uuid: String::new(),
             pinned: false,
+            local_rev: 0,
             sort_order: 0,
             title: title.to_string(),
             username: "u".into(),

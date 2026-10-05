@@ -39,10 +39,26 @@ type SeenCert = Arc<Mutex<Option<Vec<u8>>>>;
 
 /// 自定义证书校验器：不依赖系统 CA，无条件接受链验证（自签亦可通过），
 /// 但把对端叶子证书记录下来；若已固定指纹，则要求完全一致。
-#[derive(Debug)]
+///
+/// 安全要点（CertificateVerify 必须真实验证）：TOFU/指纹固定只决定「信任哪张证书」，
+/// 但对端必须证明其**持有该证书的私钥**——否则网络中间人可重放真实服务器的公开
+/// 证书副本（指纹完全一致）冒充服务器。因此 verify_tls12/13_signature 委托给
+/// ring provider 的真实验证，而非无条件放行。
 struct RecordingVerifier {
     seen: SeenCert,
     pinned: Option<String>,
+    provider: Arc<rustls::crypto::CryptoProvider>,
+}
+
+// rustls 0.23 起 `ServerCertVerifier` 要求实现 `Debug`（trait 定义为 `Debug + Send + Sync`）。
+// 手写实现而非 derive：避免把 `provider`（含密钥派生/KX 配置）打印进日志；
+// 只暴露"是否已固定指纹"这一无敏感信息的状态。
+impl std::fmt::Debug for RecordingVerifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RecordingVerifier")
+            .field("pinned", &self.pinned.is_some())
+            .finish_non_exhaustive()
+    }
 }
 
 impl rustls::client::danger::ServerCertVerifier for RecordingVerifier {
@@ -68,24 +84,36 @@ impl rustls::client::danger::ServerCertVerifier for RecordingVerifier {
 
     fn verify_tls12_signature(
         &self,
-        _message: &[u8],
-        _cert: &rustls::pki_types::CertificateDer<'_>,
-        _dss: &rustls::DigitallySignedStruct,
+        message: &[u8],
+        cert: &rustls::pki_types::CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
     ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+        // rustls 0.23 起该逻辑为模块级自由函数，需显式传入支持的算法集合
+        // （旧版是 `WebPkiSupportedAlgorithms` 的同名方法）。
+        rustls::crypto::verify_tls12_signature(
+            message,
+            cert,
+            dss,
+            &self.provider.signature_verification_algorithms,
+        )
     }
 
     fn verify_tls13_signature(
         &self,
-        _message: &[u8],
-        _cert: &rustls::pki_types::CertificateDer<'_>,
-        _dss: &rustls::DigitallySignedStruct,
+        message: &[u8],
+        cert: &rustls::pki_types::CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
     ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+        rustls::crypto::verify_tls13_signature(
+            message,
+            cert,
+            dss,
+            &self.provider.signature_verification_algorithms,
+        )
     }
 
     fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
-        rustls::crypto::ring::default_provider()
+        self.provider
             .signature_verification_algorithms
             .supported_schemes()
     }
@@ -151,13 +179,14 @@ fn strict_client() -> Result<Client, String> {
 pub fn observed_client(pinned: Option<String>, timeout: Duration) -> Result<ObservedClient, String> {
     let seen: SeenCert = Arc::new(Mutex::new(None));
     let provider = Arc::new(rustls::crypto::ring::default_provider());
-    let mut cfg = rustls::ClientConfig::builder_with_provider(provider)
+    let mut cfg = rustls::ClientConfig::builder_with_provider(provider.clone())
         .with_safe_default_protocol_versions()
         .map_err(|e| e.to_string())?
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(RecordingVerifier {
             seen: seen.clone(),
             pinned,
+            provider: provider.clone(),
         }))
         .with_no_client_auth();
     // 服务端仅提供 HTTP/1.1（自签双协议监听未协商 ALPN）。

@@ -16,6 +16,12 @@ use crate::settings;
 use crate::store::{self, Entry};
 use crate::sync;
 
+/// 校验口令（verifier）派生时混入的常量串。
+///
+/// **禁止修改此值**：它参与 `verifier = KDF(password, VERIFIER_PLAIN)` 的计算，
+/// 而 verifier 已按此值写入所有存量用户的数据库（app.db）。
+/// 字符串里的 "passbook" 是项目旧名遗留（数据库文件已改名为 app.db），
+/// 保留旧值是为了与已有数据兼容——一旦改动，所有老用户将无法用原密码解锁。
 const VERIFIER_PLAIN: &str = "passbook-verifier-v1";
 
 pub struct AppState {
@@ -140,11 +146,15 @@ fn trust_key(authority: &str) -> String {
 /// 连接一个服务器时需要采取的确认动作（纯函数，便于单测覆盖策略全分支）。
 #[derive(Debug, PartialEq, Eq)]
 enum TrustAction {
-    /// 已授权且指纹一致（或尚无指纹记录可比较）→ 直接放行。
+    /// 已授权**且已记录指纹**且指纹一致 → 直接放行。
+    ///
+    /// 注意：只有"白名单 + 指纹"两者都在时才算可信。仅有白名单而没有指纹记录，
+    /// 说明上一次写入是部分成功的（白名单已落盘、指纹未落盘），此时任何证书都
+    /// 无法被比对，等价于首次使用 —— 这正是 TOFU 最危险的状态（PT-11 补充）。
     Allow,
     /// 已授权但指纹变了 → 必须二次确认（疑似中间人换证）。
     ConfirmChanged,
-    /// 首次使用该地址 → 必须确认（HTTPS 时同时展示证书指纹）。
+    /// 首次使用该地址（或白名单/指纹不完整）→ 必须确认（HTTPS 时同时展示证书指纹）。
     ConfirmFirstUse,
 }
 
@@ -153,8 +163,10 @@ fn trust_action(authorized: bool, known: Option<&str>, fingerprint: &str) -> Tru
         return TrustAction::ConfirmFirstUse;
     }
     match known {
+        // 白名单在、指纹不在：无法比对，按首次使用处理（不静默放行）。
+        None => TrustAction::ConfirmFirstUse,
         Some(k) if k != fingerprint => TrustAction::ConfirmChanged,
-        _ => TrustAction::Allow,
+        Some(_) => TrustAction::Allow,
     }
 }
 
@@ -273,9 +285,15 @@ fn ensure_server_allowed(
             )?;
         }
     }
-    // 确认后同时落地「地址白名单」与「指纹记录」。
-    store::set_meta(db, &akey, "1")?;
-    store::set_meta(db, &fkey, &p.fingerprint)?;
+    // 确认后同时落地「地址白名单」与「指纹记录」——两条记录必须原子写入，
+    // 否则会留下"地址已放行、但指纹缺失"的中间状态（此状态下任何证书都无法比对）。
+    store::set_meta_batch(
+        db,
+        &[
+            (akey.clone(), "1".to_string()),
+            (fkey.clone(), p.fingerprint.clone()),
+        ],
+    )?;
     Ok(Some(p.fingerprint))
 }
 
@@ -661,9 +679,18 @@ pub fn sync_register(
     let c = client_for(&server, &pinned);
     let r = c.register(&username, &password, &email, &code, &vault_key_enc, &kdf_salt)?;
     let guard = state.db.lock().unwrap();
-    if let Some(db) = guard.as_ref() {
-        let _ = store::set_meta(db, "server_url", &server);
-        let _ = store::set_meta(db, "server_username", &username);
+    {
+        let db = guard.as_ref().ok_or("数据库未初始化")?;
+        // 服务器地址写入失败必须报错：否则下次启动读到空地址，
+        // 用户会以为"配置丢了"，且无法找回该服务器。
+        // 地址+账号两条同生共死，避免只写一半。
+        store::set_meta_batch(
+            db,
+            &[
+                ("server_url".to_string(), server.clone()),
+                ("server_username".to_string(), username.clone()),
+            ],
+        )?;
         // vault key 存入系统凭据库（PT-03），不再明文落 SQLite。
         if let Err(e) = write_vault_key(&state, db, &key_from_bytes(&vault_key)?) {
             eprintln!("[app] 写入 vault key 失败：{e}");
@@ -712,9 +739,16 @@ pub fn sync_login(
             .map_err(|_| "VAULT_KEY_MISMATCH".to_string())?
     };
     let guard = state.db.lock().unwrap();
-    if let Some(db) = guard.as_ref() {
-        let _ = store::set_meta(db, "server_url", &server);
-        let _ = store::set_meta(db, "server_username", &username);
+    {
+        let db = guard.as_ref().ok_or("数据库未初始化")?;
+        // 同 register：地址写入失败必须报错，否则下次启动服务器地址为空。
+        store::set_meta_batch(
+            db,
+            &[
+                ("server_url".to_string(), server.clone()),
+                ("server_username".to_string(), username.clone()),
+            ],
+        )?;
         // vault key 存入系统凭据库（PT-03）。
         if let Err(e) = write_vault_key(&state, db, &key_from_bytes(&vault_key)?) {
             eprintln!("[app] 写入 vault key 失败：{e}");
@@ -774,6 +808,43 @@ pub fn sync_check(
     };
     let c = client_for(&server, &pinned).with_token(&token);
     c.check()
+}
+
+/// 拉取当前登录用户的头像并转为 data URL 供 <img> 使用。
+/// 头像端点要求登录（防未认证枚举全部用户头像），WebView 的 <img> 请求
+/// 无法携带 JWT，因此由 Rust 侧经固定指纹客户端代理拉取。
+#[tauri::command]
+pub fn fetch_avatar(
+    server: String,
+    id: i64,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let token = current_token(&state)?;
+    let pinned = {
+        let guard = state.db.lock().unwrap();
+        let db = guard.as_ref().ok_or("数据库未初始化")?;
+        ensure_server_allowed(&app, db, &server)?
+    };
+    let c = client_for(&server, &pinned).with_token(&token);
+    let bytes = c.get_avatar(id)?;
+    // 按魔数判定 MIME，不信任扩展名。
+    let mime = if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+        "image/png"
+    } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        "image/jpeg"
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        "image/gif"
+    } else if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        "image/webp"
+    } else {
+        return Err("不支持的头像格式".into());
+    };
+    let b64 = {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD.encode(&bytes)
+    };
+    Ok(format!("data:{};base64,{}", mime, b64))
 }
 
 #[tauri::command]
@@ -940,6 +1011,13 @@ pub fn scan_lan() -> Result<Vec<network::LanServer>, String> {
 /// 密码重置后用旧密码恢复密码库（数据无损）：
 /// 用当前（新）密码登录 → 旧密码解开旧 vault key → 新密码重新包裹上传。
 /// 旧密码错误时返回 OLD_PASSWORD_WRONG，由前端提示。
+///
+/// **隐式契约**：本流程的可行性依赖"重置密码不改变 `kdf_salt`"这一前提——
+/// 服务端 `reset_password` 只改口令哈希，`users.kdf_salt` 保持不变；因此旧密码
+/// 能派生出与当初包裹 `vault_key_enc` 时**完全相同**的 master key，从而解开旧密钥。
+/// 若将来有人顺手在改密流程里重新生成 `kdf_salt`，此恢复路径会静默失效（一律
+/// 报 OLD_PASSWORD_WRONG），存量用户的旧密码库将永久无法找回。
+/// 该契约由 `recover_vault_relies_on_stable_kdf_salt` 单测锁定，改服务端前请先看它。
 #[tauri::command]
 pub fn recover_vault(
     server: String,
@@ -973,9 +1051,16 @@ pub fn recover_vault(
 
     // 持久化重新包裹后的 vault key（凭据库），恢复本地同步能力。
     let guard = state.db.lock().unwrap();
-    if let Some(db) = guard.as_ref() {
-        let _ = store::set_meta(db, "server_url", &server);
-        let _ = store::set_meta(db, "server_username", &username);
+    {
+        let db = guard.as_ref().ok_or("数据库未初始化")?;
+        // 地址写入失败必须报错（否则下次启动读不到服务器地址）。
+        store::set_meta_batch(
+            db,
+            &[
+                ("server_url".to_string(), server.clone()),
+                ("server_username".to_string(), username.clone()),
+            ],
+        )?;
         if let Err(e) = write_vault_key(&state, db, &key_from_bytes(&vault_key)?) {
             eprintln!("[app] 写入 vault key 失败：{e}");
         }
@@ -1006,10 +1091,18 @@ pub fn reset_vault_remote(
     c.delete_vault()?;
 
     let guard = state.db.lock().unwrap();
-    if let Some(db) = guard.as_ref() {
-        let _ = store::set_meta(db, "server_url", &server);
-        let _ = store::set_meta(db, "server_username", &username);
-        let _ = clear_vault_key(&state, db);
+    {
+        let db = guard.as_ref().ok_or("数据库未初始化")?;
+        // 地址写入失败必须报错；clear_vault_key 的失败同样不能吞——
+        // 密钥没清掉会让"已重置"的库仍能用旧密钥解开，破坏重置语义。
+        store::set_meta_batch(
+            db,
+            &[
+                ("server_url".to_string(), server.clone()),
+                ("server_username".to_string(), username.clone()),
+            ],
+        )?;
+        clear_vault_key(&state, db)?;
     }
     Ok(())
 }
@@ -1103,9 +1196,15 @@ mod tests {
 
     #[test]
     fn trust_action_matching_fingerprint_allows() {
+        // 白名单 + 指纹都在、且一致 → 直接放行。
         assert_eq!(trust_action(true, Some(FP_A), FP_A), TrustAction::Allow);
-        // 已确认但无指纹记录（例如明文 HTTP 场景）→ 直接放行。
-        assert_eq!(trust_action(true, None, FP_A), TrustAction::Allow);
+    }
+
+    #[test]
+    fn trust_action_allowlisted_without_fingerprint_needs_confirmation() {
+        // PT-11 补充：只有白名单、没有指纹记录（上一次两条 meta 写了一半），
+        // 无法比对任何证书，必须按首次使用重新确认，绝不能静默放行。
+        assert_eq!(trust_action(true, None, FP_A), TrustAction::ConfirmFirstUse);
     }
 
     #[test]

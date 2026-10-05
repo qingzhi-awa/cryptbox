@@ -51,6 +51,7 @@ pub fn run() {
             app::sync_register,
             app::sync_login,
             app::sync_check,
+            app::fetch_avatar,
             app::sync_send_code,
             app::push_vault,
             app::pull_vault,

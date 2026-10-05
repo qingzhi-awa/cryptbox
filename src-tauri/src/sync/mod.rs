@@ -294,6 +294,21 @@ impl SyncClient {
         }
     }
 
+    /// 拉取头像图片（带认证与指纹固定），返回原始字节。
+    /// 头像端点要求登录，WebView 的 <img> 无法携带 JWT，改由 Rust 侧代理拉取。
+    pub fn get_avatar(&self, id: i64) -> Result<Vec<u8>, String> {
+        let resp = self.send(
+            self.auth_header(
+                self.client
+                    .get(format!("{}/api/avatar/{}", self.base_url, id)),
+            ),
+        )?;
+        if !resp.status().is_success() {
+            return Err(friendly_http_error("拉取头像失败", resp.status()));
+        }
+        resp.bytes().map(|b| b.to_vec()).map_err(|e| e.to_string())
+    }
+
     pub fn pull(&self) -> Result<(Vec<Entry>, bool), String> {
         #[derive(Deserialize)]
         struct VaultResp {
@@ -307,7 +322,9 @@ impl SyncClient {
             return Err(friendly_http_error("下载失败", resp.status()));
         }
         let out: VaultResp = resp.json().map_err(|e| e.to_string())?;
-        Ok((out.entries, out.pin_sync))
+        // 安全要点（服务端下发数据不可信）：条目 id/uuid 完全由服务端控制，必须先
+        // 净化再交给存储层。详见 sanitize_server_entries 的说明。
+        Ok((sanitize_server_entries(out.entries), out.pin_sync))
     }
 
     /// 读取账号级「置顶参与同步」开关。
@@ -396,7 +413,7 @@ pub fn merge_entries(local: &[Entry], remote: &[Entry]) -> Vec<Entry> {
     for e in remote.iter().map(normalize) {
         let k = key_of(&e);
         match map.get(&k) {
-            Some(cur) if !newer(&e.updated_at, &cur.updated_at) => {}
+            Some(cur) if !should_replace(&e, cur) => {}
             Some(_) => {
                 map.insert(k, e);
             }
@@ -431,13 +448,72 @@ fn ensure_unique_ids(list: Vec<Entry>) -> Vec<Entry> {
         .collect()
 }
 
-fn newer(a: &str, b: &str) -> bool {
+/// 净化**服务端下发**的条目列表，使其可以安全地写入本地库。
+///
+/// 为什么必须做：`GET /api/vault` 返回的 `entries[].id` / `.uuid` 完全由对端控制。
+/// 客户端把这些字段直接写进 SQLite（`id` 甚至就是本地主键），因此一个被攻陷的
+/// 服务端（或明文 HTTP 下的中间人）可以借此破坏本地数据：
+///   · 下发**负数 / 极大** id → 打乱本地主键空间，后续 `save_entry` 的
+///     `WHERE id = ?`（前端只传它自己看到的 id）会命中错误行甚至写失败；
+///   · 下发**重复 id** → 整批 INSERT 触发主键冲突，`replace_entries` 事务回滚，
+///     用户表现为"同步成功但数据没更新"；
+///   · 下发**重复 / 空 uuid** → 破坏"uuid 是条目身份"这一不变量，合并时把不同
+///     条目错误折叠成一条（静默丢数据）；
+///   · 下发**超长 uuid / 非法字符** → 污染 meta 键与合并映射。
+///
+/// 处理策略（本地编号一律由客户端重新分配，不再信任服务端的 id）：
+///   1. 非法（负 / 0 以外的越界）id 统一置 0，交给下方按序重编；
+///   2. uuid 去重：重复或空白的丢弃并重新生成 v4（uuid 是身份，不能重复）；
+///   3. 最后统一重排 id：`ensure_unique_ids` 保证互不重复且为正。
+///
+/// 注意：**不做**任何解密/内容校验——密码与备注的密文由 `decrypt_entries`
+/// 负责，这里只做"结构安全"层面的净化。
+fn sanitize_server_entries(list: Vec<Entry>) -> Vec<Entry> {
+    use std::collections::HashSet;
+    // id 上限：给本地主键留出充裕空间，同时挡住溢出/恶意极大值。
+    // i64::MAX 附近的 id 会让 `next = max + 1` 溢出，因此先收敛到合理区间。
+    const MAX_ID: i64 = 1 << 40;
+    let mut seen_uuid: HashSet<String> = HashSet::new();
+    let mut out: Vec<Entry> = Vec::with_capacity(list.len());
+    for mut e in list {
+        // 1) id 收敛：非正或超过上限的一律置 0，稍后统一重编。
+        if e.id <= 0 || e.id > MAX_ID {
+            e.id = 0;
+        }
+        // 2) uuid 去重：空串或与前面重复的，重新生成随机 v4。
+        if e.uuid.is_empty() || !seen_uuid.insert(e.uuid.clone()) {
+            e.uuid = crate::crypto::new_uuid_v4();
+            seen_uuid.insert(e.uuid.clone());
+        }
+        out.push(e);
+    }
+    // 3) 重排 id：保证互不重复且为正数。
+    ensure_unique_ids(out)
+}
+
+/// 判断候选条目 `cand` 是否应覆盖现存条目 `cur`。
+///
+/// **裁决只按 `updated_at`，不按 `revision`。** 原因：
+/// 服务端采用「整库上传」协议，每次 PUT 都把全部条目删掉重建，因此 `entries.revision`
+/// 是**整库写入序号**而非条目版本——同一账号里任何人推一次，所有条目的 revision 都会 +1，
+/// 哪怕内容一个字都没变。若把它当作条目版本参与跨端比较，会出现两个致命后果：
+///   1. 未修改的旧副本因为 revision 被抬过，会被误判为"更新"从而覆盖其他设备的真实改动；
+///   2. 客户端若能影响该值，只需填入极大值即可永久压制其他设备的修改。
+/// （服务端已改为完全忽略客户端提交的 revision，见 `replaceEntries`；客户端也不再比较它。）
+///
+/// `updated_at` 由发生修改的那台设备生成、只有真正的编辑才会变更，因此它才是
+/// "这份内容何时被改的"可靠依据。两端均已统一为带时区偏移的 RFC3339（UTC）。
+///
+/// 裁决顺序：
+///   1. 解析不出时间的（历史脏数据）→ 保持现存条目，不做覆盖，避免抖动；
+///   2. 都解析得出 → 时间较晚者胜（严格大于；相等时保持现存）。
+fn should_replace(cand: &Entry, cur: &Entry) -> bool {
     match (
-        chrono::DateTime::parse_from_rfc3339(a),
-        chrono::DateTime::parse_from_rfc3339(b),
+        chrono::DateTime::parse_from_rfc3339(&cand.updated_at),
+        chrono::DateTime::parse_from_rfc3339(&cur.updated_at),
     ) {
-        (Ok(ta), Ok(tb)) => ta > tb,
-        _ => a > b,
+        (Ok(tc), Ok(tt)) => tc > tt,
+        _ => false,
     }
 }
 

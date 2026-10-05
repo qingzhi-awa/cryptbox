@@ -142,6 +142,7 @@ fn parse_csv_data(data: &[u8]) -> Result<Vec<Entry>, String> {
             id: 0,
             uuid: String::new(),
             pinned: false,
+            local_rev: 0,
             sort_order: 0,
             title: get(&row, "title"),
             username: get(&row, "username"),
@@ -168,7 +169,7 @@ pub fn parse_txt_file(path: &str) -> Result<Vec<Entry>, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::csv_safe;
+    use super::{csv_safe, parse_txt_data};
 
     #[test]
     fn dangerous_prefixes_are_prefixed() {
@@ -185,6 +186,30 @@ mod tests {
         assert_eq!(csv_safe("a=b"), "a=b");
         assert_eq!(csv_safe("user@mail.com"), "user@mail.com");
     }
+
+    // 回归：TXT 导入遇到全角冒号 '：'（3 字节 UTF-8）时，早期实现按 `line[idx + 1..]`
+    // 取值会切在字符中间，触发 "byte index N is not a char boundary" panic。中文导出的
+    // 密码文件普遍使用全角冒号，这是可被普通用户导入动作触发的崩溃。修复后按字符实际
+    // 字节长度推进，且半角/全角两种写法都要正确解析。
+    #[test]
+    fn txt_full_width_colon_does_not_panic_and_parses() {
+        let data = "标题： 我的账号\n用户名： alice\n密码： secret：123\n".as_bytes();
+        let entries = parse_txt_data(data).expect("全角冒号 TXT 应能解析");
+        assert_eq!(entries.len(), 1, "应解析出 1 条");
+        assert_eq!(entries[0].title, "我的账号");
+        assert_eq!(entries[0].username, "alice");
+        // 值内部的第二个全角冒号应原样保留
+        assert_eq!(entries[0].password, "secret：123");
+    }
+
+    #[test]
+    fn txt_half_width_colon_still_parses() {
+        let data = "标题: 我的账号\n密码: secret123\n".as_bytes();
+        let entries = parse_txt_data(data).expect("半角冒号 TXT 应能解析");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].title, "我的账号");
+        assert_eq!(entries[0].password, "secret123");
+    }
 }
 
 fn parse_txt_data(data: &[u8]) -> Result<Vec<Entry>, String> {
@@ -195,6 +220,7 @@ fn parse_txt_data(data: &[u8]) -> Result<Vec<Entry>, String> {
         id: 0,
         uuid: String::new(),
         pinned: false,
+        local_rev: 0,
         sort_order: 0,
         title: String::new(),
         username: String::new(),
@@ -222,6 +248,7 @@ fn parse_txt_data(data: &[u8]) -> Result<Vec<Entry>, String> {
                     id: 0,
                     uuid: String::new(),
                     pinned: false,
+                    local_rev: 0,
                     sort_order: 0,
                     title: String::new(),
                     username: String::new(),
@@ -237,9 +264,13 @@ fn parse_txt_data(data: &[u8]) -> Result<Vec<Entry>, String> {
             }
             continue;
         }
-        if let Some(idx) = line.find(|c| c == ':' || c == '：') {
-            let key = line[..idx].trim();
-            let val = line[idx + 1..].trim();
+        if let Some((sep_pos, sep)) = line.char_indices().find(|(_, c)| *c == ':' || *c == '：') {
+            // 分隔符可能是半角 ':'（1 字节）或全角 '：'（3 字节），必须按字符实际字节长度
+            // 推进，否则 `line[sep_pos + 1..]` 会切在全角字符中间，触发
+            // "byte index N is not a char boundary" panic（全角冒号是中文文件里的常见写法）。
+            let _ = sep;
+            let key = line[..sep_pos].trim();
+            let val = line[sep_pos + sep.len_utf8()..].trim();
             match match_field(key) {
                 Some("title") => {
                     if has_cur && (!cur.title.is_empty() || !cur.username.is_empty() || !cur.password.is_empty()) {
@@ -249,6 +280,7 @@ fn parse_txt_data(data: &[u8]) -> Result<Vec<Entry>, String> {
                         id: 0,
                         uuid: String::new(),
                         pinned: false,
+                        local_rev: 0,
                         sort_order: 0,
                         title: String::new(),
                         username: String::new(),

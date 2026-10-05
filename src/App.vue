@@ -345,6 +345,8 @@ import { listen } from '@tauri-apps/api/event'
 
 function csvEscape(v) {
   v = String(v == null ? '' : v)
+  // 公式注入防护：= + - @ 等开头的字段会被 Excel/WPS 当作公式执行，前置单引号强制按文本处理。
+  if (/^[=+\-@\t\r]/.test(v)) v = "'" + v
   if (/[",\n\r]/.test(v)) v = '"' + v.replace(/"/g, '""') + '"'
   return v
 }
@@ -389,6 +391,7 @@ export default {
       // 登录态（令牌本体由 Rust 侧保管，前端不持有原始 JWT，见 PT-06）
       loggedIn: false,
       myAvatar: localStorage.getItem('myAvatar') || '',
+      avatarDataUrl: '',
       ioFormat: '',
       toastTimer: null,
       idleTimer: null,
@@ -417,9 +420,8 @@ export default {
       return !this.search.trim() && this.entries.length > 1
     },
     avatarUrl() {
-      if (!this.myAvatar) return ''
-      const id = this.myAvatar.replace(/\.[^.]+$/, '')
-      return this.server.replace(/\/$/, '') + '/api/avatar/' + id
+      // 头像经 Rust 侧带认证拉取（data URL）；头像端点已要求登录，<img> 直连无法携带凭据。
+      return this.avatarDataUrl
     },
     // 是否使用明文 HTTP（提示风险并提供一键改用 HTTPS）
     isPlaintext() {
@@ -470,6 +472,7 @@ export default {
       if (this.loggedIn && this.server) {
         try {
           await api.SyncCheck(this.server)
+          await this.loadAvatar()
         } catch (e) {
           // 证书信任问题不代表会话失效（用户确认信任后即可恢复）；
           // 其余错误视为会话已失效，清除本地会话状态。
@@ -826,6 +829,19 @@ export default {
     async doLogin() {
       await this.auth(false)
     },
+    async loadAvatar() {
+      // 头像端点要求登录：由 Rust 侧带 JWT（并校验证书指纹）拉取后转 data URL。
+      // 拉取失败仅回退为字母头像，不打扰用户。
+      this.avatarDataUrl = ''
+      if (!this.myAvatar || !this.server || !this.loggedIn) return
+      const id = parseInt(this.myAvatar.replace(/\.[^.]+$/, ''), 10)
+      if (!id) return
+      try {
+        this.avatarDataUrl = await api.FetchAvatar(this.server, id)
+      } catch (e) {
+        /* ignore */
+      }
+    },
     async doLogout() {
       // 令牌保存在 Rust 侧 + 系统凭据库，退出需通知后端清除（前端无令牌可清）。
       try {
@@ -836,6 +852,7 @@ export default {
       this.loggedIn = false
       this.serverPassword = ''
       this.myAvatar = ''
+      this.avatarDataUrl = ''
       this.userMenuOpen = false
       localStorage.removeItem('serverToken')
       localStorage.removeItem('myAvatar')
@@ -855,6 +872,7 @@ export default {
         this.loggedIn = true
         this.myAvatar = r.avatar || ''
         localStorage.setItem('myAvatar', r.avatar || '')
+        await this.loadAvatar()
         // 同步口令不持久化：它同时是端到端加密主密钥的派生源，明文落盘等于交出密码库。
         // 「记住我」仅用于记忆同步服务器地址与账号名。
         localStorage.removeItem('syncPassword')
