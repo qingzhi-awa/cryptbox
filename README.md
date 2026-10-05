@@ -54,10 +54,8 @@
 
 | 平台 | 文件 | 说明 |
 |------|------|------|
-| Windows x64 | `CryPtBox_0.2.3_x64-setup.exe` | NSIS 安装包（中文） |
-| Windows x64 | `CryPtBox_0.2.3_x64_zh-CN.msi` | MSI 安装包（中文） |
-| Windows x64 | `CryPtBox_0.2.3_x64-setup.en.exe` | NSIS 安装包（英文） |
-| Windows x64 | `CryPtBox_0.2.3_x64_en-US.msi` | MSI 安装包（英文） |
+| Windows x64 | `CryPtBox_0.2.3_x64-setup.exe` | NSIS 安装包 |
+| Windows x64 | `CryPtBox_0.2.3_x64_zh-CN.msi` | MSI 安装包 |
 | Windows x64 | `cryptbox.exe` | 绿色单文件（可配合 `portable.flag` 便携使用） |
 
 > 正式版见 [Releases](../../releases)。macOS / Linux 需在对应平台执行 `npx tauri build` 构建。
@@ -86,7 +84,6 @@
 | macOS | `~/Library/Application Support/CryPtBox/app.db` |
 | Linux | `~/.config/CryPtBox/app.db` |
 
-> 旧版本数据库名为 `passbook.db`，升级后自动重命名为 `app.db`，无需手动迁移。
 
 ### 数据目录保密要求
 
