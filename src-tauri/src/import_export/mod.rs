@@ -28,9 +28,14 @@ pub fn export_txt(path: &str, list: &[Entry]) -> Result<i64, String> {
 
 /// CSV 公式注入防护：Excel/WPS 会将以 = + - @ \t \r 开头的字段当作公式执行
 /// （如 DDE 注入）。导出时统一前置单引号，强制按文本处理。
+///
+/// R11-10：Excel/WPS 会忽略单元格里的**前导空白**，因此 `" =1+1"` 这类同样危险。
+/// 判定必须纵向拉开到第一个非空白字符（原实现只看首字符，可被前导空格绕过）。
 fn csv_safe(v: &str) -> String {
-    if v.starts_with(['=', '+', '-', '@', '\t', '\r']) {
-        format!("'{}", v)
+    let first_danger = v.starts_with(['=', '+', '-', '@', '\t', '\r']);
+    let after_space_danger = v.trim_start().starts_with(['=', '+', '-', '@']);
+    if first_danger || after_space_danger {
+        format!("'{v}")
     } else {
         v.to_string()
     }
@@ -175,6 +180,17 @@ mod tests {
     fn dangerous_prefixes_are_prefixed() {
         for d in ["=cmd|'/c calc'!A0", "+SUM(A1)", "-1", "@import", "\tx", "\ry"] {
             assert!(csv_safe(d).starts_with('\''), "应加前缀: {}", d);
+        }
+    }
+
+    // R11-10 回归：前导空白 + 公式字符同样危险（Excel/WPS 会忽略前导空白）。
+    #[test]
+    fn dangerous_prefixes_with_leading_space_are_prefixed() {
+        for d in [" =1+1", "   @SUM(A1)", "\t=cmd|'/c calc'!A0", " \t-CMD()"] {
+            assert!(
+                csv_safe(d).starts_with('\''),
+                "前导空白后接公式字符应加前缀: {d:?}"
+            );
         }
     }
 

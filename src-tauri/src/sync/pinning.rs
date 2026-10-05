@@ -78,7 +78,9 @@ impl rustls::client::danger::ServerCertVerifier for RecordingVerifier {
                 ));
             }
         }
-        *self.seen.lock().unwrap() = Some(der);
+        // R11-07：容忍锁毒化——该校验器运行在 TLS 握手路径上，若因毒化而 panic
+        // 会直接中断连接，故用 into_inner 取回内部数据继续。
+        *self.seen.lock().unwrap_or_else(|e| e.into_inner()) = Some(der);
         Ok(rustls::client::danger::ServerCertVerified::assertion())
     }
 
@@ -129,9 +131,10 @@ pub struct ObservedClient {
 impl ObservedClient {
     /// 本次连接观测到的对端证书指纹（未发生 TLS 握手时为 None）。
     pub fn observed_fingerprint(&self) -> Option<String> {
+        // R11-07：容忍锁毒化（该校验器运行在握手路径上）。
         self.seen
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .as_ref()
             .map(|der| fingerprint_of_der(der))
     }
@@ -209,7 +212,8 @@ pub fn fetch_with_fingerprint(url: &str, timeout: Duration) -> Option<(String, S
         return None;
     }
     let fp = oc.observed_fingerprint()?;
-    let body = resp.text().ok()?;
+    // R11-04：探测响应必须受限读取（对端可能是网段内任意恶意主机）。
+    let body = super::read_body_capped_string(resp, super::MAX_PROBE_BODY).ok()?;
     Some((body, fp))
 }
 

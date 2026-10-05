@@ -346,7 +346,8 @@ import { listen } from '@tauri-apps/api/event'
 function csvEscape(v) {
   v = String(v == null ? '' : v)
   // 公式注入防护：= + - @ 等开头的字段会被 Excel/WPS 当作公式执行，前置单引号强制按文本处理。
-  if (/^[=+\-@\t\r]/.test(v)) v = "'" + v
+  // R12-01：必须覆盖**前导空白**——Excel 会忽略字段开头的空格/Tab，`" =1+1"` 同样会触发公式。
+  if (/^[\s]*[=+\-@\t\r]/.test(v)) v = "'" + v
   if (/[",\n\r]/.test(v)) v = '"' + v.replace(/"/g, '""') + '"'
   return v
 }
@@ -390,7 +391,9 @@ export default {
       secretBackend: '',
       // 登录态（令牌本体由 Rust 侧保管，前端不持有原始 JWT，见 PT-06）
       loggedIn: false,
-      myAvatar: localStorage.getItem('myAvatar') || '',
+      // R11-11：服务端下发的头像文件名字符串不再写入 localStorage——它对不可信
+      // 对端数据而言是多余的持久化面，本字段仅用于 parseInt 取 id 与 v-if，内存态足够。
+      myAvatar: '',
       avatarDataUrl: '',
       ioFormat: '',
       toastTimer: null,
@@ -871,7 +874,6 @@ export default {
         // 服务端不再把原始 JWT 下发给 WebView（PT-06）。
         this.loggedIn = true
         this.myAvatar = r.avatar || ''
-        localStorage.setItem('myAvatar', r.avatar || '')
         await this.loadAvatar()
         // 同步口令不持久化：它同时是端到端加密主密钥的派生源，明文落盘等于交出密码库。
         // 「记住我」仅用于记忆同步服务器地址与账号名。

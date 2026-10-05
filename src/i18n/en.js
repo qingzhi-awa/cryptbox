@@ -75,7 +75,7 @@ export default {
     fpChanged: 'The server certificate fingerprint no longer matches the trusted record; the connection was rejected',
     plaintextWarn: 'Currently using plaintext HTTP: traffic is not encrypted and the server cannot be authenticated. Switch to HTTPS.',
     useHttps: 'Use HTTPS',
-    secretFileWarn: 'System credential store unavailable; the sync key has been downgraded to a local file (mode 0600).'
+    secretFileWarn: 'System credential store unavailable; the sync key has been downgraded to a local file (mode 0600) and the session token is kept in memory only (you will need to sign in again after a restart).'
   },
   settings: {
     title: 'Settings',

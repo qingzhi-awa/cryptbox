@@ -86,16 +86,18 @@ pub fn scan_lan() -> Result<Vec<LanServer>, String> {
         let rx: Arc<Mutex<Receiver<String>>> = Arc::clone(&rx);
         handles.push(thread::spawn(move || loop {
             // 通道关闭或已取空即退出该 worker。
-            let host = match rx.lock().unwrap().recv() {
+            // R11-07：统一容忍锁毒化（into_inner），避免某个 worker 内的 panic
+            // 毒化共享锁后让其余 worker 与最终汇总全部 panic。
+            let host = match rx.lock().unwrap_or_else(|e| e.into_inner()).recv() {
                 Ok(h) => h,
                 Err(_) => break,
             };
             if let Some(s) = probe_host_secure(&host) {
-                results.lock().unwrap().push(s);
+                results.lock().unwrap_or_else(|e| e.into_inner()).push(s);
                 continue; // 已加密即最优结果，不再探测明文
             }
             if let Some(s) = probe_host_plain(&plain_client, &host) {
-                results.lock().unwrap().push(s);
+                results.lock().unwrap_or_else(|e| e.into_inner()).push(s);
             }
         }));
     }
@@ -108,7 +110,7 @@ pub fn scan_lan() -> Result<Vec<LanServer>, String> {
         let _ = h.join();
     }
 
-    let mut list = results.lock().unwrap().clone();
+    let mut list = results.lock().unwrap_or_else(|e| e.into_inner()).clone();
     // 加密优先，其次按地址排序（结果稳定可复现）。
     list.sort_by(|a, b| {
         b.secure
@@ -142,7 +144,8 @@ fn probe_host_plain(client: &reqwest::blocking::Client, host: &str) -> Option<La
     if !resp.status().is_success() {
         return None;
     }
-    let body = resp.text().ok()?;
+    // R11-04：网段内任一主机都可应答，响应体必须受限读取。
+    let body = crate::sync::read_body_capped_string(resp, crate::sync::MAX_PROBE_BODY).ok()?;
     if !looks_like_cryptbox(&body) {
         return None;
     }

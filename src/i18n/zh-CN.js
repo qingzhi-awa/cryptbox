@@ -80,7 +80,7 @@ export default {
     fpChanged: '服务器证书指纹与已信任记录不一致，连接已被拒绝',
     plaintextWarn: '当前使用明文 HTTP：传输未加密，也无法验证服务器身份。建议改用 HTTPS。',
     useHttps: '改用 HTTPS',
-    secretFileWarn: '系统凭据库不可用，同步密钥已降级为本地文件存储（权限 0600）。'
+    secretFileWarn: '系统凭据库不可用：同步密钥已降级为本地文件（权限 0600）；会话令牌仅保留在内存中，重启后需重新登录。'
   },
   settings: {
     title: '设置',

@@ -34,6 +34,66 @@ pub struct AppState {
     pub token: Mutex<Option<String>>,
 }
 
+impl AppState {
+    /// 获取数据库互斥锁，**容忍锁被毒化**（R11-07）。
+    ///
+    /// 默认的 `.lock().unwrap()` 在任一持锁线程 panic 后会**永久**返回 `Err`，使之后
+    /// 所有数据库操作级联失败、应用实质不可用（R11-02 的越界 panic 正是被此放大成
+    /// "持久砖化"）。这里用 `PoisonError::into_inner()` 取回内部数据继续服务：
+    ///
+    /// * 毒化只说明"曾有线程持锁时 panic"，**不代表数据已损坏**；
+    /// * `Connection` 的内部状态由 rusqlite 维护，未提交事务在 unwind 时由
+    ///   `Transaction` 的 Drop 回滚，因此恢复使用是安全的；
+    /// * 宁可让某次操作报错重试，也不要把整个应用变成不可用。
+    ///
+    /// R12-04：毒化恢复是"低概率高后果"路径，故做两件事——打印显著日志（原先静默），
+    /// 并主动 `ROLLBACK` 一次，自愈"panic 发生在已 BEGIN 但未走到 Drop"时残留的写锁；
+    /// 随后 `clear_poison()` 复位毒化标志，避免之后每次取锁都重复回滚与打日志。
+    pub fn db_lock(&self) -> std::sync::MutexGuard<'_, Option<Connection>> {
+        match self.db.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                let g = e.into_inner();
+                if let Some(conn) = g.as_ref() {
+                    // 无活动事务时 ROLLBACK 会返回错误，属预期，忽略即可。
+                    let _ = conn.execute_batch("ROLLBACK");
+                }
+                self.db.clear_poison();
+                eprintln!(
+                    "[app] 数据库互斥锁曾被毒化（有线程持锁时 panic），已回滚残留事务并恢复使用（R12-04）"
+                );
+                g
+            }
+        }
+    }
+
+    /// 获取解锁密钥互斥锁，容忍毒化（R11-07）。语义同 [`AppState::db_lock`]。
+    pub fn key_lock(&self) -> std::sync::MutexGuard<'_, Option<[u8; 32]>> {
+        match self.key.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                let g = e.into_inner();
+                self.key.clear_poison();
+                eprintln!("[app] 解锁密钥互斥锁曾被毒化，已恢复继续使用（R12-04）");
+                g
+            }
+        }
+    }
+
+    /// 获取会话令牌互斥锁，容忍毒化（R11-07）。语义同 [`AppState::db_lock`]。
+    pub fn token_lock(&self) -> std::sync::MutexGuard<'_, Option<String>> {
+        match self.token.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                let g = e.into_inner();
+                self.token.clear_poison();
+                eprintln!("[app] 会话令牌互斥锁曾被毒化，已恢复继续使用（R12-04）");
+                g
+            }
+        }
+    }
+}
+
 pub fn init(app: &tauri::AppHandle) -> Result<(), String> {
     let db_path = store::db_file_path();
     let conn = store::open_store(&db_path)?;
@@ -59,9 +119,7 @@ pub fn init(app: &tauri::AppHandle) -> Result<(), String> {
 /// 取出当前会话令牌；未登录时返回结构化错误 NOT_LOGGED_IN。
 fn current_token(state: &AppState) -> Result<String, String> {
     state
-        .token
-        .lock()
-        .unwrap()
+        .token_lock()
         .clone()
         .filter(|t| !t.is_empty())
         .ok_or_else(|| "NOT_LOGGED_IN".to_string())
@@ -72,7 +130,7 @@ fn store_session(state: &AppState, token: &str) {
     if token.is_empty() {
         return;
     }
-    *state.token.lock().unwrap() = Some(token.to_string());
+    *state.token_lock() = Some(token.to_string());
     if let Err(e) = state.secret.set_session(token) {
         eprintln!("[app] 保存会话令牌失败：{e}");
     }
@@ -80,7 +138,7 @@ fn store_session(state: &AppState, token: &str) {
 
 /// 清除会话令牌（内存 + 凭据库）。
 fn clear_session_token(state: &AppState) {
-    *state.token.lock().unwrap() = None;
+    *state.token_lock() = None;
     if let Err(e) = state.secret.delete_session() {
         eprintln!("[app] 清除会话令牌失败：{e}");
     }
@@ -107,7 +165,7 @@ impl Drop for KeyGuard {
 }
 
 fn require_unlock(state: &AppState) -> Result<KeyGuard, String> {
-    let guard = state.key.lock().unwrap();
+    let guard = state.key_lock();
     (*guard).map(KeyGuard).ok_or_else(|| "未解锁".to_string())
 }
 
@@ -127,10 +185,10 @@ fn local_master_initialized(db: &Connection) -> bool {
 /// 返回 LOCAL_LOCKED 时由前端提示用户先解锁。
 fn guard_destructive_sync(state: &AppState) -> Result<(), String> {
     let need_unlock = {
-        let guard = state.db.lock().unwrap();
+        let guard = state.db_lock();
         guard.as_ref().map(local_master_initialized).unwrap_or(false)
     };
-    if need_unlock && state.key.lock().unwrap().is_none() {
+    if need_unlock && state.key_lock().is_none() {
         return Err("LOCAL_LOCKED".to_string());
     }
     Ok(())
@@ -360,7 +418,7 @@ fn clear_vault_key(state: &AppState, db: &Connection) -> Result<(), String> {
 
 #[tauri::command]
 pub fn init_db(state: State<'_, AppState>) -> Result<bool, String> {
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     Ok(store::get_meta(db, "salt").is_some())
 }
@@ -373,19 +431,24 @@ pub fn setup_master(password: String, state: State<'_, AppState>) -> Result<bool
     let salt = crypto::new_salt();
     let key = crypto::derive_key(&password, &salt)?;
     let verifier = crypto::encrypt_string(&key, VERIFIER_PLAIN)?;
-    let guard = state.db.lock().unwrap();
-    let db = guard.as_ref().ok_or("数据库未初始化")?;
-    use base64::{engine::general_purpose, Engine};
-    store::set_meta(db, "salt", &general_purpose::STANDARD.encode(&salt))?;
-    store::set_meta(db, "verifier", &verifier)?;
-    *state.key.lock().unwrap() = Some(key);
+    // R12-03：db guard 收窄到本作用域，写完即释放，避免与其他命令构成 AB-BA 死锁。
+    // 其余命令统一按「key_lock → db_lock」取锁（require_unlock 先取 key 并即刻释放），
+    // 原实现在此**同时**持有 db 与 key，顺序与全局相反，是唯一的锁序反转点。
+    {
+        let guard = state.db_lock();
+        let db = guard.as_ref().ok_or("数据库未初始化")?;
+        use base64::{engine::general_purpose, Engine};
+        store::set_meta(db, "salt", &general_purpose::STANDARD.encode(&salt))?;
+        store::set_meta(db, "verifier", &verifier)?;
+    }
+    *state.key_lock() = Some(key);
     Ok(true)
 }
 
 #[tauri::command]
 pub fn unlock(password: String, state: State<'_, AppState>) -> Result<bool, String> {
     let salt_b64 = {
-        let guard = state.db.lock().unwrap();
+        let guard = state.db_lock();
         let db = guard.as_ref().ok_or("数据库未初始化")?;
         store::get_meta(db, "salt").ok_or("尚未初始化")?
     };
@@ -395,7 +458,7 @@ pub fn unlock(password: String, state: State<'_, AppState>) -> Result<bool, Stri
         .map_err(|e| e.to_string())?;
     let key = crypto::derive_key(&password, &salt)?;
     let verifier = {
-        let guard = state.db.lock().unwrap();
+        let guard = state.db_lock();
         let db = guard.as_ref().ok_or("数据库未初始化")?;
         store::get_meta(db, "verifier").unwrap_or_default()
     };
@@ -403,13 +466,13 @@ pub fn unlock(password: String, state: State<'_, AppState>) -> Result<bool, Stri
     if plain != VERIFIER_PLAIN {
         return Ok(false);
     }
-    *state.key.lock().unwrap() = Some(key);
+    *state.key_lock() = Some(key);
     Ok(true)
 }
 
 /// 用零覆盖并清除内存中的主密钥，降低内存转储提取密钥的风险。
 pub fn clear_key(state: &AppState) {
-    let mut guard = state.key.lock().unwrap();
+    let mut guard = state.key_lock();
     if let Some(mut key) = guard.take() {
         for b in key.iter_mut() {
             *b = 0;
@@ -424,7 +487,7 @@ pub fn lock(state: State<'_, AppState>) {
 
 #[tauri::command]
 pub fn is_unlocked(state: State<'_, AppState>) -> bool {
-    state.key.lock().unwrap().is_some()
+    state.key_lock().is_some()
 }
 
 // ---- 密码条目 ----
@@ -432,7 +495,7 @@ pub fn is_unlocked(state: State<'_, AppState>) -> bool {
 #[tauri::command]
 pub fn list_entries(state: State<'_, AppState>) -> Result<Vec<Entry>, String> {
     let key = require_unlock(&state)?;
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     store::list_entries(db, key.as_bytes())
 }
@@ -440,7 +503,7 @@ pub fn list_entries(state: State<'_, AppState>) -> Result<Vec<Entry>, String> {
 #[tauri::command]
 pub fn save_entry(entry: Entry, state: State<'_, AppState>) -> Result<Entry, String> {
     let key = require_unlock(&state)?;
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     store::save_entry(db, key.as_bytes(), entry)
 }
@@ -448,7 +511,7 @@ pub fn save_entry(entry: Entry, state: State<'_, AppState>) -> Result<Entry, Str
 #[tauri::command]
 pub fn delete_entry(id: i64, soft: bool, state: State<'_, AppState>) -> Result<(), String> {
     let _key = require_unlock(&state)?;
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     if soft {
         store::soft_delete_entry(db, id)
@@ -461,7 +524,7 @@ pub fn delete_entry(id: i64, soft: bool, state: State<'_, AppState>) -> Result<(
 #[tauri::command]
 pub fn pin_entry(id: i64, pinned: bool, state: State<'_, AppState>) -> Result<(), String> {
     let _key = require_unlock(&state)?;
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     store::set_pinned(db, id, pinned)
 }
@@ -470,7 +533,7 @@ pub fn pin_entry(id: i64, pinned: bool, state: State<'_, AppState>) -> Result<()
 #[tauri::command]
 pub fn reorder_entries(ids: Vec<i64>, state: State<'_, AppState>) -> Result<(), String> {
     let _key = require_unlock(&state)?;
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     store::reorder_entries(db, &ids)
 }
@@ -478,7 +541,7 @@ pub fn reorder_entries(ids: Vec<i64>, state: State<'_, AppState>) -> Result<(), 
 #[tauri::command]
 pub fn list_trash(state: State<'_, AppState>) -> Result<Vec<Entry>, String> {
     let key = require_unlock(&state)?;
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     // 读取回收站前先按保留天数清理过期条目。
     let days = crate::store::get_meta(db, "set_recycle_days")
@@ -491,7 +554,7 @@ pub fn list_trash(state: State<'_, AppState>) -> Result<Vec<Entry>, String> {
 #[tauri::command]
 pub fn restore_entry(id: i64, state: State<'_, AppState>) -> Result<(), String> {
     let _key = require_unlock(&state)?;
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     store::restore_entry(db, id)
 }
@@ -499,7 +562,7 @@ pub fn restore_entry(id: i64, state: State<'_, AppState>) -> Result<(), String> 
 #[tauri::command]
 pub fn purge_entry(id: i64, state: State<'_, AppState>) -> Result<(), String> {
     let _key = require_unlock(&state)?;
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     store::hard_delete_entry(db, id).map(|_| ())
 }
@@ -507,7 +570,7 @@ pub fn purge_entry(id: i64, state: State<'_, AppState>) -> Result<(), String> {
 #[tauri::command]
 pub fn empty_trash(state: State<'_, AppState>) -> Result<usize, String> {
     let _key = require_unlock(&state)?;
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     store::empty_trash(db)
 }
@@ -563,7 +626,7 @@ pub fn export_txt(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<S
     let Some(path) = pick_save_path(&app, "CryPtBox.txt", "txt", "TXT")? else {
         return Ok(String::new());
     };
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     let list = store::list_entries(db, key.as_bytes())?;
     import_export::export_txt(&path.to_string_lossy(), &list)?;
@@ -576,7 +639,7 @@ pub fn export_csv(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<S
     let Some(path) = pick_save_path(&app, "CryPtBox.csv", "csv", "CSV")? else {
         return Ok(String::new());
     };
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     let list = store::list_entries(db, key.as_bytes())?;
     import_export::export_csv(&path.to_string_lossy(), &list)?;
@@ -590,7 +653,7 @@ pub fn import_csv(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<i
         return Ok(0);
     };
     let entries = import_export::parse_csv_file(&path.to_string_lossy())?;
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     let mut count = 0i64;
     for e in entries {
@@ -607,7 +670,7 @@ pub fn import_txt(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<i
         return Ok(0);
     };
     let entries = import_export::parse_txt_file(&path.to_string_lossy())?;
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     let mut count = 0i64;
     for e in entries {
@@ -640,7 +703,7 @@ pub fn save_text_file(
 #[tauri::command]
 pub fn get_server_config(state: State<'_, AppState>) -> HashMap<String, String> {
     let mut map = HashMap::new();
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     if let Some(db) = guard.as_ref() {
         map.insert(
             "server".into(),
@@ -666,7 +729,7 @@ pub fn sync_register(
 ) -> Result<HashMap<String, String>, String> {
     // 服务端身份校验（HTTPS 指纹固定）；明文模式返回 None。
     let pinned = {
-        let guard = state.db.lock().unwrap();
+        let guard = state.db_lock();
         let db = guard.as_ref().ok_or("数据库未初始化")?;
         ensure_server_allowed(&app, db, &server)?
     };
@@ -678,7 +741,7 @@ pub fn sync_register(
 
     let c = client_for(&server, &pinned);
     let r = c.register(&username, &password, &email, &code, &vault_key_enc, &kdf_salt)?;
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     {
         let db = guard.as_ref().ok_or("数据库未初始化")?;
         // 服务器地址写入失败必须报错：否则下次启动读到空地址，
@@ -713,7 +776,7 @@ pub fn sync_login(
     state: State<'_, AppState>,
 ) -> Result<HashMap<String, String>, String> {
     let pinned = {
-        let guard = state.db.lock().unwrap();
+        let guard = state.db_lock();
         let db = guard.as_ref().ok_or("数据库未初始化")?;
         ensure_server_allowed(&app, db, &server)?
     };
@@ -730,7 +793,9 @@ pub fn sync_login(
     let vault_key = if r.vault_key_enc.is_empty() {
         let vk = crypto::new_vault_key();
         let enc = crypto::encrypt_bytes(&master_key, &vk)?;
-        c.put_vault_key(&enc)?;
+        // 首次启用：服务端 vault_key_enc 为空，无需口令即可写入（R13-02 约定）；
+        // 仍带上刚刚用于登录的口令，便于服务端未来收紧时不致失配。
+        c.put_vault_key(&enc, &password)?;
         vk
     } else {
         // 解密失败通常意味着账号密码曾被重置：返回结构化标识，
@@ -738,7 +803,7 @@ pub fn sync_login(
         crypto::decrypt_bytes(&master_key, &r.vault_key_enc)
             .map_err(|_| "VAULT_KEY_MISMATCH".to_string())?
     };
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     {
         let db = guard.as_ref().ok_or("数据库未初始化")?;
         // 同 register：地址写入失败必须报错，否则下次启动服务器地址为空。
@@ -768,14 +833,12 @@ pub fn sync_login(
 pub fn session_info(state: State<'_, AppState>) -> HashMap<String, String> {
     let mut map = HashMap::new();
     let logged_in = state
-        .token
-        .lock()
-        .unwrap()
+        .token_lock()
         .as_deref()
         .map(|t| !t.is_empty())
         .unwrap_or(false);
     map.insert("loggedIn".into(), if logged_in { "1" } else { "0" }.into());
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     if let Some(db) = guard.as_ref() {
         map.insert("server".into(), store::get_meta(db, "server_url").unwrap_or_default());
         map.insert(
@@ -802,7 +865,7 @@ pub fn sync_check(
 ) -> Result<(), String> {
     let token = current_token(&state)?;
     let pinned = {
-        let guard = state.db.lock().unwrap();
+        let guard = state.db_lock();
         let db = guard.as_ref().ok_or("数据库未初始化")?;
         ensure_server_allowed(&app, db, &server)?
     };
@@ -822,7 +885,7 @@ pub fn fetch_avatar(
 ) -> Result<String, String> {
     let token = current_token(&state)?;
     let pinned = {
-        let guard = state.db.lock().unwrap();
+        let guard = state.db_lock();
         let db = guard.as_ref().ok_or("数据库未初始化")?;
         ensure_server_allowed(&app, db, &server)?
     };
@@ -855,7 +918,7 @@ pub fn sync_send_code(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let pinned = {
-        let guard = state.db.lock().unwrap();
+        let guard = state.db_lock();
         let db = guard.as_ref().ok_or("数据库未初始化")?;
         ensure_server_allowed(&app, db, &server)?
     };
@@ -896,7 +959,7 @@ pub fn push_vault(
     let token = current_token(&state)?;
     let key = require_unlock(&state)?;
     let (encrypted, pinned) = {
-        let guard = state.db.lock().unwrap();
+        let guard = state.db_lock();
         let db = guard.as_ref().ok_or("数据库未初始化")?;
         let pinned = ensure_server_allowed(&app, db, &server)?;
         let list = store::list_entries_all(db, key.as_bytes())?;
@@ -916,13 +979,13 @@ pub fn pull_vault(
     let token = current_token(&state)?;
     let key = require_unlock(&state)?;
     let pinned = {
-        let guard = state.db.lock().unwrap();
+        let guard = state.db_lock();
         let db = guard.as_ref().ok_or("数据库未初始化")?;
         ensure_server_allowed(&app, db, &server)?
     };
     let c = client_for(&server, &pinned).with_token(&token);
     let (list, pin_sync) = c.pull()?;
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     let vault_key = read_vault_key(&state, db)?;
     let decrypted = decrypt_entries(&list, &vault_key)?;
@@ -940,14 +1003,14 @@ pub fn merge_vault(
     let token = current_token(&state)?;
     let key = require_unlock(&state)?;
     let pinned = {
-        let guard = state.db.lock().unwrap();
+        let guard = state.db_lock();
         let db = guard.as_ref().ok_or("数据库未初始化")?;
         ensure_server_allowed(&app, db, &server)?
     };
     let c = client_for(&server, &pinned).with_token(&token);
     let (server_list, pin_sync) = c.pull()?;
     let (merged, encrypted) = {
-        let guard = state.db.lock().unwrap();
+        let guard = state.db_lock();
         let db = guard.as_ref().ok_or("数据库未初始化")?;
         let vault_key = read_vault_key(&state, db)?;
         let server_decrypted = decrypt_entries(&server_list, &vault_key)?;
@@ -975,7 +1038,7 @@ pub fn get_pin_sync(
 ) -> Result<bool, String> {
     let token = current_token(&state)?;
     let pinned = {
-        let guard = state.db.lock().unwrap();
+        let guard = state.db_lock();
         let db = guard.as_ref().ok_or("数据库未初始化")?;
         ensure_server_allowed(&app, db, &server)?
     };
@@ -995,7 +1058,7 @@ pub fn set_pin_sync(
 ) -> Result<(), String> {
     let token = current_token(&state)?;
     let pinned = {
-        let guard = state.db.lock().unwrap();
+        let guard = state.db_lock();
         let db = guard.as_ref().ok_or("数据库未初始化")?;
         ensure_server_allowed(&app, db, &server)?
     };
@@ -1029,7 +1092,7 @@ pub fn recover_vault(
 ) -> Result<(), String> {
     guard_destructive_sync(&state)?;
     let pinned = {
-        let guard = state.db.lock().unwrap();
+        let guard = state.db_lock();
         let db = guard.as_ref().ok_or("数据库未初始化")?;
         ensure_server_allowed(&app, db, &server)?
     };
@@ -1047,10 +1110,11 @@ pub fn recover_vault(
         .map_err(|_| "OLD_PASSWORD_WRONG".to_string())?;
     let new_master = crypto::derive_master_key(&current_password, &salt)?;
     let enc = crypto::encrypt_bytes(&new_master, &vault_key)?;
-    c.put_vault_key(&enc)?;
+    // 账号已有 vault_key_enc：按 R13-02 约定必须带当前口令才能改写解锁材料。
+    c.put_vault_key(&enc, &current_password)?;
 
     // 持久化重新包裹后的 vault key（凭据库），恢复本地同步能力。
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     {
         let db = guard.as_ref().ok_or("数据库未初始化")?;
         // 地址写入失败必须报错（否则下次启动读不到服务器地址）。
@@ -1081,7 +1145,7 @@ pub fn reset_vault_remote(
     // 破坏性操作：清空服务端密码库并移除本地同步密钥，要求本地已解锁。
     guard_destructive_sync(&state)?;
     let pinned = {
-        let guard = state.db.lock().unwrap();
+        let guard = state.db_lock();
         let db = guard.as_ref().ok_or("数据库未初始化")?;
         ensure_server_allowed(&app, db, &server)?
     };
@@ -1090,7 +1154,7 @@ pub fn reset_vault_remote(
     store_session(&state, &r.token);
     c.delete_vault()?;
 
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     {
         let db = guard.as_ref().ok_or("数据库未初始化")?;
         // 地址写入失败必须报错；clear_vault_key 的失败同样不能吞——
@@ -1116,7 +1180,7 @@ pub fn reset_vault_remote(
 /// 列出已确认的服务器地址。用于界面展示与撤销。
 #[tauri::command]
 pub fn list_allowed_servers(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     Ok(store::list_meta_keys_with_prefix(db, "server_allow:")
         .into_iter()
@@ -1128,7 +1192,7 @@ pub fn list_allowed_servers(state: State<'_, AppState>) -> Result<Vec<String>, S
 #[tauri::command]
 pub fn remove_allowed_server(server: String, state: State<'_, AppState>) -> Result<(), String> {
     let authority = sync::pinning::authority(&sync::normalize_server_url(&server));
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     store::delete_meta(db, &allow_key(&authority))?;
     store::delete_meta(db, &trust_key(&authority))
@@ -1138,7 +1202,7 @@ pub fn remove_allowed_server(server: String, state: State<'_, AppState>) -> Resu
 #[tauri::command]
 pub fn forget_server_trust(server: String, state: State<'_, AppState>) -> Result<(), String> {
     let authority = sync::pinning::authority(&sync::normalize_server_url(&server));
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     store::delete_meta(db, &trust_key(&authority))
 }
@@ -1147,7 +1211,7 @@ pub fn forget_server_trust(server: String, state: State<'_, AppState>) -> Result
 #[tauri::command]
 pub fn get_trusted_fingerprint(server: String, state: State<'_, AppState>) -> Result<String, String> {
     let authority = sync::pinning::authority(&sync::normalize_server_url(&server));
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     Ok(store::get_meta(db, &trust_key(&authority)).unwrap_or_default())
 }
@@ -1160,7 +1224,7 @@ pub fn get_secret_backend(state: State<'_, AppState>) -> String {
 
 #[tauri::command]
 pub fn get_settings(state: State<'_, AppState>) -> Result<HashMap<String, String>, String> {
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     Ok(settings::get_settings(db))
 }
@@ -1175,7 +1239,7 @@ pub fn save_settings(
     state: State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    let guard = state.db.lock().unwrap();
+    let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     settings::save_settings(db, autostart, autosync, &priority, recycle, recycle_days, &app)
 }

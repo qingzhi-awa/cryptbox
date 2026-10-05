@@ -44,7 +44,15 @@ pub fn save_settings(
     crate::store::set_meta(db, "set_autosync", if autosync { "1" } else { "0" })?;
     crate::store::set_meta(db, "set_priority", priority)?;
     crate::store::set_meta(db, "set_recycle", if recycle { "1" } else { "0" })?;
-    crate::store::set_meta(db, "set_recycle_days", &recycle_days.max(1).to_string())?;
+    // R11-02：回收天数必须**双向**钳制。旧实现只有 `.max(1)` 下界，手工输入一个
+    // 8~9 位数即可通过校验，随后 store::purge_expired 中的 chrono 时间运算会 panic，
+    // 并因锁毒化把"单次操作失败"放大为"应用持久不可用"。上界与网页端
+    // clampRange(…, 1, 3650, 30) 对齐。
+    crate::store::set_meta(
+        db,
+        "set_recycle_days",
+        &recycle_days.clamp(1, 3650).to_string(),
+    )?;
 
     // 开机自启：注册/注销系统自启动项（Windows 注册表 Run / macOS LaunchAgent）
     use tauri_plugin_autostart::ManagerExt;

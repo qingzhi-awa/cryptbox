@@ -75,6 +75,47 @@ fn friendly_net_error(prefix: &str, e: reqwest::Error) -> String {
     }
 }
 
+// ---- 响应体大小上限（R11-04）----
+//
+// reqwest 对响应体**没有**默认上限，`text()/json()/bytes()` 会一次性把整个响应读入
+// 内存。客户端可能连到恶意/被控的同步服务器（或明文 HTTP 下被中间人应答）；更值得
+// 注意的是 `network::scan_lan` 会对整个 /24 网段发起探测，网段内**任一主机**都能成为
+// 应答方并与客户端继续通信——对端只要持续发送数据即可把客户端内存耗尽（DoS）。
+// 因此所有响应体一律经 `read_body_capped` 受限读取，并按用途区分上限。
+
+/// 整库 JSON（`/api/vault`、`/api/me`、登录/注册等）的响应体上限。
+pub const MAX_JSON_BODY: usize = 64 << 20; // 64MB
+/// 头像图片响应体上限。
+pub const MAX_AVATAR_BODY: usize = 8 << 20; // 8MB
+/// 探测类响应（`/api/status`、`/api/health`）的上限——正常只有几百字节。
+pub const MAX_PROBE_BODY: usize = 64 << 10; // 64KB
+
+/// 受限读取响应体：最多 `max` 字节，超出立即报错（R11-04）。
+///
+/// 两道防线：① 先看 `Content-Length` 声明，超额直接拒绝（连读都不读）；
+/// ② 对分块传输等无声明的情形，用 `Read::take` 多读 1 字节来判断是否超限。
+pub fn read_body_capped(resp: Response, max: usize) -> Result<Vec<u8>, String> {
+    if let Some(len) = resp.content_length() {
+        if len > max as u64 {
+            return Err(format!("响应体过大（服务端声明 {len} 字节，上限 {max} 字节）"));
+        }
+    }
+    use std::io::Read;
+    let mut buf = Vec::new();
+    resp.take(max as u64 + 1)
+        .read_to_end(&mut buf)
+        .map_err(|e| e.to_string())?;
+    if buf.len() > max {
+        return Err(format!("响应体过大（超过上限 {max} 字节）"));
+    }
+    Ok(buf)
+}
+
+/// 受限读取并把响应体按 UTF-8（有损）解码为字符串。
+pub fn read_body_capped_string(resp: Response, max: usize) -> Result<String, String> {
+    Ok(String::from_utf8_lossy(&read_body_capped(resp, max)?).into_owned())
+}
+
 pub struct SyncClient {
     base_url: String,
     token: Option<String>,
@@ -211,7 +252,7 @@ impl SyncClient {
         }
         let resp = self.send(self.client.post(format!("{}{}", self.base_url, path)).json(&body))?;
         let status = resp.status();
-        let text = resp.text().map_err(|e| e.to_string())?;
+        let text = read_body_capped_string(resp, MAX_JSON_BODY)?;
         let out: AuthResponse = serde_json::from_str(&text).unwrap_or(AuthResponse {
             token: String::new(),
             avatar: String::new(),
@@ -233,8 +274,16 @@ impl SyncClient {
         })
     }
 
-    pub fn put_vault_key(&self, vault_key_enc: &str) -> Result<(), String> {
-        let body = serde_json::json!({ "vault_key_enc": vault_key_enc });
+    /// 上传（重新）包裹后的密码库密钥。
+    ///
+    /// 服务端约定（R13-02）：若账号**已有** vault_key_enc，改写属于解锁材料变更，
+    /// 必须同时提交当前口令，否则服务端拒绝（不再允许仅凭令牌覆盖密文）；
+    /// 首次启用（服务端 vault_key_enc 为空）时口令可传空串。
+    pub fn put_vault_key(&self, vault_key_enc: &str, current_password: &str) -> Result<(), String> {
+        let body = serde_json::json!({
+            "vault_key_enc": vault_key_enc,
+            "current_password": current_password,
+        });
         let resp = self.send(
             self.auth_header(self.client.put(format!("{}/api/vault-key", self.base_url)))
                 .json(&body),
@@ -260,7 +309,7 @@ impl SyncClient {
         if resp.status().is_success() {
             Ok(())
         } else {
-            let text = resp.text().unwrap_or_default();
+            let text = read_body_capped_string(resp, MAX_JSON_BODY).unwrap_or_default();
             let e: ErrResp = serde_json::from_str(&text).unwrap_or(ErrResp {
                 error: String::new(),
             });
@@ -306,7 +355,7 @@ impl SyncClient {
         if !resp.status().is_success() {
             return Err(friendly_http_error("拉取头像失败", resp.status()));
         }
-        resp.bytes().map(|b| b.to_vec()).map_err(|e| e.to_string())
+        read_body_capped(resp, MAX_AVATAR_BODY)
     }
 
     pub fn pull(&self) -> Result<(Vec<Entry>, bool), String> {
@@ -321,7 +370,8 @@ impl SyncClient {
         if !resp.status().is_success() {
             return Err(friendly_http_error("下载失败", resp.status()));
         }
-        let out: VaultResp = resp.json().map_err(|e| e.to_string())?;
+        let out: VaultResp =
+            serde_json::from_slice(&read_body_capped(resp, MAX_JSON_BODY)?).map_err(|e| e.to_string())?;
         // 安全要点（服务端下发数据不可信）：条目 id/uuid 完全由服务端控制，必须先
         // 净化再交给存储层。详见 sanitize_server_entries 的说明。
         Ok((sanitize_server_entries(out.entries), out.pin_sync))
@@ -339,7 +389,8 @@ impl SyncClient {
         if !resp.status().is_success() {
             return Err(friendly_http_error("读取置顶同步设置失败", resp.status()));
         }
-        let out: Resp = resp.json().map_err(|e| e.to_string())?;
+        let out: Resp =
+            serde_json::from_slice(&read_body_capped(resp, MAX_JSON_BODY)?).map_err(|e| e.to_string())?;
         Ok(out.pin_sync)
     }
 
@@ -548,3 +599,7 @@ pub fn apply_remote_pins(entries: &mut [Entry], remote: &[Entry]) {
 // 渗透测试集成用例（默认 #[ignore]，需显式指定环境变量与 --ignored 才运行）。
 #[cfg(test)]
 mod pentest_tests;
+
+// R11-04 回归：响应体大小上限。
+#[cfg(test)]
+mod r11_body_limit_tests;

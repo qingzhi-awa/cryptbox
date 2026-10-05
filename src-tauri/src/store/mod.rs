@@ -6,6 +6,18 @@ use std::path::PathBuf;
 
 use crate::crypto;
 
+/// 本机修改计数器（`entries.revision`）的上界。
+///
+/// R11-06：`local_rev` 由渲染层提交且原先无上界，传入 `i64::MAX` 时
+/// `+1` 在 debug 下溢出 panic、release 下回绕为 `i64::MIN`，破坏"本机修改计数器"
+/// 的单调语义。这里统一钳到 2^40（远大于任何真实修改次数）。
+const MAX_LOCAL_REV: i64 = 1 << 40;
+
+/// 把渲染层提交的 local_rev 钳到合法区间。
+fn clamp_local_rev(v: i64) -> i64 {
+    v.clamp(0, MAX_LOCAL_REV)
+}
+
 /// 一条密码记录。Password/Notes 在内存中为明文，落盘时被主密钥加密。
 /// Deleted 为墓碑标记：软删除后保留 id + 时间戳用于跨端同步传播删除。
 ///
@@ -404,7 +416,10 @@ pub fn save_entry(db: &Connection, key: &[u8; 32], mut entry: Entry) -> Result<E
             entry.uuid = crypto::new_uuid_v4();
         }
         // 新条目初始化本机修改计数器（仅本机使用，不上传参与冲突裁决）。
-        entry.local_rev += 1;
+        // R11-06：入参由渲染层提交，必须先钳制再 +1，避免溢出/回绕。
+        entry.local_rev = clamp_local_rev(entry.local_rev)
+            .saturating_add(1)
+            .min(MAX_LOCAL_REV);
         db.execute(
             "INSERT INTO entries (uuid, pinned, sort_order, title, username, password_enc, url, category, notes_enc, created_at, updated_at, revision) \
              VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -437,12 +452,16 @@ pub fn save_entry(db: &Connection, key: &[u8; 32], mut entry: Entry) -> Result<E
                 .unwrap_or_default();
         }
         // 本机修改递增计数器（取库中已有值与入参较大者 +1）。仅本机使用。
+        // R11-06：两侧都必须钳制，再 saturating_add，避免 i64::MAX 输入导致
+        // debug 溢出 panic / release 回绕，并保证结果不越上界。
         let prev_rev: i64 = db
             .query_row("SELECT revision FROM entries WHERE id = ?", [entry.id], |r| {
                 r.get(0)
             })
             .unwrap_or(0);
-        entry.local_rev = prev_rev.max(entry.local_rev) + 1;
+        entry.local_rev = clamp_local_rev(prev_rev.max(clamp_local_rev(entry.local_rev)))
+            .saturating_add(1)
+            .min(MAX_LOCAL_REV);
         db.execute(
             "UPDATE entries SET uuid=?, title=?, username=?, password_enc=?, url=?, category=?, notes_enc=?, updated_at=?, revision=? WHERE id=?",
             params![
@@ -526,11 +545,29 @@ pub fn empty_trash(db: &Connection) -> Result<usize, String> {
 }
 
 /// 自动清理：物理删除超过保留天数的墓碑条目，返回删除条数。
+///
+/// R11-02：`chrono::Duration::days()` 与 `DateTime - TimeDelta` 在 chrono 0.4.45 中
+/// 都是 **`expect()`**（与 debug/release 无关）：`days*86400` 溢出 i64、或结果年份超出
+/// chrono 的 ±262142 范围（`MAX_YEAR = (i32::MAX>>13)-1`）都会 **panic**。旧实现只有
+/// `.max(1)` 下界，手工输入一个 8~9 位数（如 `99999999`）即可在打开回收站时 panic；
+/// 且该调用发生在 `state.db.lock()` 的 guard 存活期内，panic 会毒化 Mutex，使此后所有
+/// 数据库操作级联失败（持久砖化，重启复现）。
+///
+/// 这里改用**不会 panic** 的 `try_days` + `checked_sub_signed`，越界一律视为"无需清理"。
 pub fn purge_expired(db: &Connection, days: i64) -> Result<usize, String> {
     if days <= 0 {
         return Ok(0);
     }
-    let threshold = (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339();
+    // 与写入侧 clamp(1, 3650) 对齐；同时对绕过写入侧的历史坏值提供第二道防线。
+    let days = days.min(3650);
+    let span = match chrono::Duration::try_days(days) {
+        Some(d) => d,
+        None => return Ok(0),
+    };
+    let threshold = match chrono::Utc::now().checked_sub_signed(span) {
+        Some(t) => t.to_rfc3339(),
+        None => return Ok(0),
+    };
     db.execute(
         "DELETE FROM entries WHERE deleted = 1 AND updated_at < ?",
         params![threshold],
@@ -772,6 +809,68 @@ mod tests {
         assert!(
             serde_json::from_str::<LegacyEntry>(json).is_err(),
             "旧结构（无默认值）确实会因缺字段拒绝前端新增表单的载荷"
+        );
+    }
+
+    // R11-02 回归：purge_expired 对越界保留天数不得 panic。
+    //
+    // chrono 0.4.45 的 `Duration::days()` 与 `DateTime - TimeDelta` 都是 expect()：
+    // 旧实现下 `days` 为 8~9 位数即可 panic（且会毒化 Mutex → 应用持久不可用）。
+    #[test]
+    fn purge_expired_with_out_of_range_days_does_not_panic() {
+        let path = temp_db("purge-oob");
+        let conn = open_store(&path).unwrap();
+        for d in [
+            i64::MAX,
+            i64::MIN,
+            9_999_999_999,
+            100_000_000,
+            3651,
+            1,
+            0,
+            -5,
+        ] {
+            let r = purge_expired(&conn, d);
+            assert!(r.is_ok(), "purge_expired({d}) 不应报错或 panic：{r:?}");
+        }
+    }
+
+    // R11-06 回归：local_rev 越界输入不得溢出 panic / 回绕为负数。
+    #[test]
+    fn local_rev_is_clamped_to_bounded_range() {
+        let path = temp_db("localrev");
+        let conn = open_store(&path).unwrap();
+        let key = [3u8; 32];
+
+        // 新增：入参为 i64::MAX 也必须落在合法区间。
+        let mut e = new_entry("a");
+        e.local_rev = i64::MAX;
+        let saved = save_entry(&conn, &key, e).unwrap();
+        assert!(
+            saved.local_rev >= 1 && saved.local_rev <= MAX_LOCAL_REV,
+            "新增条目 local_rev 越界：{}",
+            saved.local_rev
+        );
+
+        // 更新：同样不得回绕为负数。
+        let mut u = saved.clone();
+        u.title = "a2".into();
+        u.local_rev = i64::MAX;
+        let saved2 = save_entry(&conn, &key, u).unwrap();
+        assert!(
+            saved2.local_rev >= 1 && saved2.local_rev <= MAX_LOCAL_REV,
+            "更新后 local_rev 越界：{}",
+            saved2.local_rev
+        );
+
+        // 负值输入也要被钳到 >= 1。
+        let mut n = new_entry("neg");
+        n.local_rev = i64::MIN;
+        let saved3 = save_entry(&conn, &key, n).unwrap();
+        assert!(
+            saved3.local_rev >= 1,
+            "负值输入后 local_rev 应为正数：{}",
+            saved3.local_rev
         );
     }
 
