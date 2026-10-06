@@ -88,5 +88,21 @@ export default {
     purged: '已徹底刪除',
     emptied: '已清空 {n} 條'
   },
-  lang: { label: '語言', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語' }
+  lang: { label: '語言', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語' },
+  tabs: { passwords: '密碼管理', trash: '資源回收筒', logs: '日誌', settings: '設定', about: '關於' },
+  theme: { auto: '色彩模式：自動', light: '色彩模式：淺色', dark: '色彩模式：深色' },
+  logs: {
+    title: '本機日誌',
+    hint: '僅記錄本用戶端的關鍵操作（解鎖 / 匯入匯出 / 同步等），不上傳伺服器。',
+    refresh: '重新整理',
+    clear: '清空日誌',
+    confirmClear: '確定清空本機日誌？',
+    empty: '暫無日誌'
+  },
+  about: {
+    title: '關於',
+    version: '版本',
+    github: 'GitHub 開源地址',
+    desc: '密匣 — 端對端加密的密碼管理器：密碼庫在本機加密後才同步，伺服器無法讀取任何明文。'
+  },
 }

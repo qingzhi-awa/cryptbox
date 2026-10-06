@@ -72,5 +72,8 @@ export default {
     invoke('save_settings', { autostart, autosync, priority, recycle, recycleDays }),
   // 置顶同步开关（账号级，保存在服务端，桌面端/网页端共用）。
   GetPinSync: (server) => invoke('get_pin_sync', { server }),
-  SetPinSync: (server, enabled) => invoke('set_pin_sync', { server, enabled })
+  SetPinSync: (server, enabled) => invoke('set_pin_sync', { server, enabled }),
+  // 本地操作日志（client.log）：读取最近 N 条（新在前）与清空。
+  ReadLogs: (limit) => invoke('read_client_logs', { limit }),
+  ClearLogs: () => invoke('clear_client_logs')
 }

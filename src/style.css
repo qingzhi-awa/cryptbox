@@ -3,6 +3,31 @@
   --fnos-primary-hover: #005EEB;
   --fnos-primary-active: #0043B8;
   --fnos-primary-light: #EBF2FF;
+  /* 主题语义色（浅色默认）：深色模式在 html[data-theme='dark'] 下整体反转 */
+  --bg: #fafafa;
+  --card: #ffffff;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --faint: #9ca3af;
+  --border: #e5e7eb;
+  --input-border: #d1d5db;
+  --hover: #f3f4f6;
+  --chip: #eef2f7;
+  --input-bg: #ffffff;
+}
+
+html[data-theme='dark'] {
+  --fnos-primary-light: #1e3a5f;
+  --bg: #0f172a;
+  --card: #1e293b;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --faint: #64748b;
+  --border: #334155;
+  --input-border: #475569;
+  --hover: #334155;
+  --chip: #273548;
+  --input-bg: #0f172a;
 }
 
 * {
@@ -19,8 +44,8 @@ body,
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
-  background: #fafafa;
-  color: #1f2937;
+  background: var(--bg);
+  color: var(--text);
   font-size: 14px;
 }
 
@@ -41,9 +66,9 @@ input,
 textarea,
 select {
   width: 100%;
-  background: #fff;
-  border: 1px solid #d1d5db;
-  color: #1f2937;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--text);
   border-radius: 6px;
   padding: 9px 12px;
   font-size: 14px;
@@ -67,6 +92,6 @@ select:focus {
 }
 
 .btn-ghost {
-  background: #e5e7eb;
-  color: #1f2937;
+  background: var(--hover);
+  color: var(--text);
 }

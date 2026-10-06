@@ -87,5 +87,21 @@ export default {
     purged: 'Supprimé définitivement',
     emptied: '{n} éléments supprimés'
   },
-  lang: { label: 'Langue', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' }
+  lang: { label: 'Langue', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' },
+  tabs: { passwords: 'Mots de passe', trash: 'Corbeille', logs: 'Journaux', settings: 'Paramètres', about: 'À propos' },
+  theme: { auto: 'Mode de couleur : auto', light: 'Mode de couleur : clair', dark: 'Mode de couleur : sombre' },
+  logs: {
+    title: 'Journaux locaux',
+    hint: "Consigne uniquement les actions clés de ce client (déverrouillage / import / export / synchronisation). Jamais envoyé au serveur.",
+    refresh: 'Actualiser',
+    clear: 'Vider les journaux',
+    confirmClear: 'Vider les journaux locaux ?',
+    empty: 'Aucun journal'
+  },
+  about: {
+    title: 'À propos',
+    version: 'Version',
+    github: 'Dépôt GitHub',
+    desc: 'CryPtBox — gestionnaire de mots de passe à chiffrement de bout en bout : le coffre est chiffré localement avant synchronisation ; le serveur ne peut jamais lire le texte en clair.'
+  },
 }

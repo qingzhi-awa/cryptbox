@@ -106,5 +106,21 @@ export default {
     purged: 'Deleted permanently',
     emptied: 'Emptied {n} entries'
   },
-  lang: { label: 'Language', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語' }
+  lang: { label: 'Language', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語' },
+  tabs: { passwords: 'Passwords', trash: 'Trash', logs: 'Logs', settings: 'Settings', about: 'About' },
+  theme: { auto: 'Color mode: auto', light: 'Color mode: light', dark: 'Color mode: dark' },
+  logs: {
+    title: 'Local Logs',
+    hint: 'Records key actions of this client only (unlock / import / export / sync). Never uploaded.',
+    refresh: 'Refresh',
+    clear: 'Clear logs',
+    confirmClear: 'Clear local logs?',
+    empty: 'No logs yet'
+  },
+  about: {
+    title: 'About',
+    version: 'Version',
+    github: 'GitHub repository',
+    desc: 'CryPtBox — an end-to-end encrypted password manager: your vault is encrypted locally before syncing; the server can never read plaintext.'
+  },
 }

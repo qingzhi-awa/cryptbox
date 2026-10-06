@@ -87,5 +87,21 @@ export default {
     purged: 'Excluído permanentemente',
     emptied: '{n} itens excluídos'
   },
-  lang: { label: 'Idioma', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' }
+  lang: { label: 'Idioma', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' },
+  tabs: { passwords: 'Senhas', trash: 'Lixeira', logs: 'Registros', settings: 'Configurações', about: 'Sobre' },
+  theme: { auto: 'Modo de cor: automático', light: 'Modo de cor: claro', dark: 'Modo de cor: escuro' },
+  logs: {
+    title: 'Registros locais',
+    hint: 'Registra apenas ações-chave deste cliente (desbloqueio / importação / exportação / sincronização). Nunca é enviado ao servidor.',
+    refresh: 'Atualizar',
+    clear: 'Limpar registros',
+    confirmClear: 'Limpar os registros locais?',
+    empty: 'Nenhum registro'
+  },
+  about: {
+    title: 'Sobre',
+    version: 'Versão',
+    github: 'Repositório no GitHub',
+    desc: 'CryPtBox — gerenciador de senhas com criptografia de ponta a ponta: o cofre é criptografado localmente antes da sincronização; o servidor nunca lê texto puro.'
+  },
 }

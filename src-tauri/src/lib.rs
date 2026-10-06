@@ -1,8 +1,9 @@
 // CryPtBox Tauri 客户端库入口。
 // 模块按功能分类：app（命令注册）/ crypto（加密）/ store（存储）/
 // sync（同步）/ import_export（导入导出）/ settings（设置）/
-// network（局域网扫描）/ tray（系统托盘）。
+// network（局域网扫描）/ tray（系统托盘）/ clientlog（本地操作日志）。
 mod app;
+mod clientlog;
 mod crypto;
 mod import_export;
 mod network;
@@ -68,6 +69,8 @@ pub fn run() {
             app::get_secret_backend,
             app::get_settings,
             app::save_settings,
+            clientlog::read_client_logs,
+            clientlog::clear_client_logs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running CryPtBox");

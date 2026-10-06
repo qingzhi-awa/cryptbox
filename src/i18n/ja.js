@@ -87,5 +87,21 @@ export default {
     purged: '完全に削除しました',
     emptied: '{n} 件を削除しました'
   },
-  lang: { label: '言語', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語' }
+  lang: { label: '言語', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語' },
+  tabs: { passwords: 'パスワード', trash: 'ゴミ箱', logs: 'ログ', settings: '設定', about: 'について' },
+  theme: { auto: 'カラーモード：自動', light: 'カラーモード：ライト', dark: 'カラーモード：ダーク' },
+  logs: {
+    title: 'ローカルログ',
+    hint: 'このクライアントの主要操作（ロック解除 / インポート・エクスポート / 同期など）のみを記録し、サーバーには送信されません。',
+    refresh: '更新',
+    clear: 'ログを消去',
+    confirmClear: 'ローカルログを消去しますか？',
+    empty: 'ログはありません'
+  },
+  about: {
+    title: 'このアプリについて',
+    version: 'バージョン',
+    github: 'GitHub リポジトリ',
+    desc: '密匣（CryPtBox）— エンドツーエンド暗号化のパスワードマネージャー：保管庫はローカルで暗号化してから同期され、サーバーは平文を読めません。'
+  },
 }

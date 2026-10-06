@@ -87,5 +87,21 @@ export default {
     purged: '완전히 삭제됨',
     emptied: '{n}개 삭제됨'
   },
-  lang: { label: '언어', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' }
+  lang: { label: '언어', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' },
+  tabs: { passwords: '비밀번호', trash: '휴지통', logs: '로그', settings: '설정', about: '정보' },
+  theme: { auto: '색상 모드: 자동', light: '색상 모드: 라이트', dark: '색상 모드: 다크' },
+  logs: {
+    title: '로컬 로그',
+    hint: '이 클라이언트의 주요 작업(잠금 해제 / 가져오기·내보내기 / 동기화 등)만 기록되며 서버에 업로드되지 않습니다.',
+    refresh: '새로 고침',
+    clear: '로그 지우기',
+    confirmClear: '로컬 로그를 지우시겠습니까?',
+    empty: '로그가 없습니다'
+  },
+  about: {
+    title: '정보',
+    version: '버전',
+    github: 'GitHub 저장소',
+    desc: '密匣 — 종단 간 암호화 비밀번호 관리자: 볼트는 로컬에서 암호화된 후 동기화되며, 서버는 평문을 읽을 수 없습니다.'
+  },
 }

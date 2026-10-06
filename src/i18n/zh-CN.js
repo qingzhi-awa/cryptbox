@@ -111,5 +111,21 @@ export default {
     purged: '已彻底删除',
     emptied: '已清空 {n} 条'
   },
-  lang: { label: '语言', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語' }
+  lang: { label: '语言', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語' },
+  tabs: { passwords: '密码管理', trash: '回收站', logs: '日志', settings: '设置', about: '关于' },
+  theme: { auto: '颜色模式：自动', light: '颜色模式：浅色', dark: '颜色模式：深色' },
+  logs: {
+    title: '本机日志',
+    hint: '仅记录本客户端的关键操作（解锁 / 导入导出 / 同步等），不上传服务器。',
+    refresh: '刷新',
+    clear: '清空日志',
+    confirmClear: '确定清空本机日志？',
+    empty: '暂无日志'
+  },
+  about: {
+    title: '关于',
+    version: '版本',
+    github: 'GitHub 开源地址',
+    desc: '密匣 — 端到端加密的密码管理器：密码库在本机加密后才同步，服务器无法读取任何明文。'
+  },
 }

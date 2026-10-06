@@ -87,5 +87,21 @@ export default {
     purged: 'Eliminado definitivamente',
     emptied: '{n} entradas eliminadas'
   },
-  lang: { label: 'Idioma', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' }
+  lang: { label: 'Idioma', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' },
+  tabs: { passwords: 'Contraseñas', trash: 'Papelera', logs: 'Registros', settings: 'Ajustes', about: 'Acerca de' },
+  theme: { auto: 'Modo de color: automático', light: 'Modo de color: claro', dark: 'Modo de color: oscuro' },
+  logs: {
+    title: 'Registros locales',
+    hint: 'Registra solo acciones clave de este cliente (desbloqueo / importación / exportación / sincronización). Nunca se sube al servidor.',
+    refresh: 'Actualizar',
+    clear: 'Borrar registros',
+    confirmClear: '¿Borrar los registros locales?',
+    empty: 'Sin registros'
+  },
+  about: {
+    title: 'Acerca de',
+    version: 'Versión',
+    github: 'Repositorio de GitHub',
+    desc: 'CryPtBox — gestor de contraseñas con cifrado de extremo a extremo: la bóveda se cifra localmente antes de sincronizar; el servidor nunca puede leer texto en claro.'
+  },
 }

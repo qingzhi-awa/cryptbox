@@ -52,27 +52,53 @@
     </header>
     <div v-if="userMenuOpen" class="menu-overlay" @click="userMenuOpen = false"></div>
 
-    <div class="toolbar">
-      <input v-model="search" :placeholder="$t('toolbar.search')" />
-      <button class="btn-primary" @click="startAdd">{{ $t('toolbar.add') }}</button>
-      <select v-model="ioFormat" class="btn-ghost menu-select" @change="onIO">
-        <option value="" selected>{{ $t('toolbar.io') }}</option>
-        <option value="import-csv">{{ $t('toolbar.import') }} CSV</option>
-        <option value="import-txt">{{ $t('toolbar.import') }} TXT</option>
-        <option value="export-csv">{{ $t('toolbar.export') }} CSV</option>
-        <option value="export-txt">{{ $t('toolbar.export') }} TXT</option>
-      </select>
-      <button class="btn-ghost" @click="downloadTemplate">{{ $t('toolbar.template') }}</button>
-      <button class="btn-ghost" @click="openTrash">{{ $t('trash.title') }}</button>
-      <button class="btn-ghost" @click="openSettings">{{ $t('toolbar.settings') }}</button>
-      <template v-if="loggedIn">
-        <button class="btn-primary" @click="doPush">{{ $t('sync.upload') }}</button>
-        <button class="btn-ghost" @click="doPull">{{ $t('sync.download') }}</button>
-      </template>
-    </div>
-
     <div v-if="msg" class="toast toast-msg">{{ msg }}</div>
     <div v-if="error" class="toast toast-error">{{ error }}</div>
+
+    <div class="layout">
+      <nav class="sidebar">
+        <button :class="{ active: tab === 'passwords' }" @click="switchTab('passwords')">{{ $t('tabs.passwords') }}</button>
+        <button :class="{ active: tab === 'trash' }" @click="switchTab('trash')">{{ $t('tabs.trash') }}</button>
+        <button :class="{ active: tab === 'logs' }" @click="switchTab('logs')">{{ $t('tabs.logs') }}</button>
+        <button :class="{ active: tab === 'settings' }" @click="switchTab('settings')">{{ $t('tabs.settings') }}</button>
+        <button :class="{ active: tab === 'about' }" @click="switchTab('about')">{{ $t('tabs.about') }}</button>
+        <div class="sidebar-footer">
+          <button class="theme-toggle" @click="cycleTheme" :title="themeLabel">
+            <span class="theme-icon">{{ themeIcon }}</span>
+          </button>
+          <a
+            class="gh-link"
+            href="https://github.com/qingzhi-awa/cryptbox"
+            target="_blank"
+            rel="noopener"
+            :title="$t('about.github')"
+          >
+            <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
+            </svg>
+          </a>
+        </div>
+      </nav>
+
+      <div class="content">
+        <!-- 密码管理 -->
+        <template v-if="tab === 'passwords'">
+          <div class="toolbar">
+            <input v-model="search" :placeholder="$t('toolbar.search')" />
+            <button class="btn-primary" @click="startAdd">{{ $t('toolbar.add') }}</button>
+            <select v-model="ioFormat" class="btn-ghost menu-select" @change="onIO">
+              <option value="" selected>{{ $t('toolbar.io') }}</option>
+              <option value="import-csv">{{ $t('toolbar.import') }} CSV</option>
+              <option value="import-txt">{{ $t('toolbar.import') }} TXT</option>
+              <option value="export-csv">{{ $t('toolbar.export') }} CSV</option>
+              <option value="export-txt">{{ $t('toolbar.export') }} TXT</option>
+            </select>
+            <button class="btn-ghost" @click="downloadTemplate">{{ $t('toolbar.template') }}</button>
+            <template v-if="loggedIn">
+              <button class="btn-primary" @click="doPush">{{ $t('sync.upload') }}</button>
+              <button class="btn-ghost" @click="doPull">{{ $t('sync.download') }}</button>
+            </template>
+          </div>
 
     <div class="list grid-list">
       <div
@@ -141,6 +167,103 @@
         </div>
       </div>
       <div v-if="filtered.length === 0" class="empty">{{ $t('list.empty') }}</div>
+    </div>
+        </template>
+
+        <!-- 回收站 -->
+        <div v-else-if="tab === 'trash'" class="panel">
+          <h2 class="panel-title">{{ $t('trash.title') }}</h2>
+          <div class="trash-list">
+            <div v-for="e in trash" :key="e.id" class="trash-item">
+              <div class="trash-main">
+                <div class="title">{{ e.title }}</div>
+                <div class="meta">{{ e.username || '—' }}</div>
+              </div>
+              <div class="ops">
+                <button class="btn-ghost" @click="doRestore(e.id)">{{ $t('trash.restore') }}</button>
+                <button class="btn-danger" @click="doPurge(e.id)">{{ $t('trash.purge') }}</button>
+              </div>
+            </div>
+            <div v-if="trash.length === 0" class="empty">{{ $t('trash.empty') }}</div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn-danger" :disabled="trash.length === 0" @click="doEmptyTrash">{{ $t('trash.emptyTrash') }}</button>
+          </div>
+        </div>
+
+        <!-- 本机日志 -->
+        <div v-else-if="tab === 'logs'" class="panel">
+          <div class="panel-head">
+            <h2 class="panel-title">{{ $t('logs.title') }}</h2>
+            <div class="panel-ops">
+              <button class="btn-ghost" @click="loadLogs">{{ $t('logs.refresh') }}</button>
+              <button class="btn-danger" :disabled="logs.length === 0" @click="doClearLogs">{{ $t('logs.clear') }}</button>
+            </div>
+          </div>
+          <p class="panel-hint">{{ $t('logs.hint') }}</p>
+          <div class="log-list">
+            <div v-for="(l, i) in logs" :key="i" class="log-line"><code>{{ l }}</code></div>
+            <div v-if="logs.length === 0" class="empty">{{ $t('logs.empty') }}</div>
+          </div>
+        </div>
+
+        <!-- 设置 -->
+        <div v-else-if="tab === 'settings'" class="panel">
+          <h2 class="panel-title">{{ $t('settings.title') }}</h2>
+          <label class="checkbox-row">
+            <input type="checkbox" v-model="settingsForm.autostart" />
+            <span>{{ $t('settings.autostart') }}</span>
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" v-model="settingsForm.autosync" />
+            <span>{{ $t('settings.autosync') }}</span>
+          </label>
+          <label class="checkbox-row" v-if="loggedIn">
+            <input type="checkbox" v-model="pinSync" @change="changePinSync" />
+            <span>{{ $t('settings.pinSync') }}</span>
+          </label>
+          <div class="settings-group">
+            <div class="settings-label">{{ $t('settings.priority') }}</div>
+            <label class="radio-row">
+              <input type="radio" value="local" v-model="settingsForm.priority" />
+              <span>{{ $t('settings.local') }}</span>
+            </label>
+            <label class="radio-row">
+              <input type="radio" value="server" v-model="settingsForm.priority" />
+              <span>{{ $t('settings.server') }}</span>
+            </label>
+            <label class="radio-row">
+              <input type="radio" value="merge" v-model="settingsForm.priority" />
+              <span>{{ $t('settings.merge') }}</span>
+            </label>
+          </div>
+          <div class="settings-group">
+            <div class="settings-label">{{ $t('settings.recycle') }}</div>
+            <label class="checkbox-row">
+              <input type="checkbox" v-model="settingsForm.recycle" />
+              <span>{{ $t('settings.recycleOn') }}</span>
+            </label>
+            <label class="form-row">
+              <span>{{ $t('settings.recycleDays') }}</span>
+              <input v-model.number="settingsForm.recycleDays" type="number" min="1" max="3650" />
+            </label>
+          </div>
+          <p class="settings-hint">{{ $t('settings.hint') }}</p>
+          <div class="modal-actions">
+            <button class="btn-primary" @click="saveSettings">{{ $t('modal.save') }}</button>
+          </div>
+        </div>
+
+        <!-- 关于 -->
+        <div v-else-if="tab === 'about'" class="panel">
+          <h2 class="panel-title">{{ $t('about.title') }}</h2>
+          <p class="about-line">{{ $t('app.title') }} {{ $t('about.version') }}：{{ clientVersion || '—' }}</p>
+          <p class="about-line">
+            {{ $t('about.github') }}：<a class="about-link" href="https://github.com/qingzhi-awa/cryptbox" target="_blank" rel="noopener">github.com/qingzhi-awa/cryptbox</a>
+          </p>
+          <p class="about-line about-desc">{{ $t('about.desc') }}</p>
+        </div>
+      </div>
     </div>
 
     <!-- 新增 / 编辑弹窗 -->
@@ -251,80 +374,6 @@
       </div>
     </div>
 
-    <!-- 设置弹窗 -->
-    <div v-if="settingsShow" class="mask" @click.self="settingsShow = false">
-      <div class="modal">
-        <h2>{{ $t('settings.title') }}</h2>
-        <label class="checkbox-row">
-          <input type="checkbox" v-model="settingsForm.autostart" />
-          <span>{{ $t('settings.autostart') }}</span>
-        </label>
-        <label class="checkbox-row">
-          <input type="checkbox" v-model="settingsForm.autosync" />
-          <span>{{ $t('settings.autosync') }}</span>
-        </label>
-        <label class="checkbox-row" v-if="loggedIn">
-          <input type="checkbox" v-model="pinSync" @change="changePinSync" />
-          <span>{{ $t('settings.pinSync') }}</span>
-        </label>
-        <div class="settings-group">
-          <div class="settings-label">{{ $t('settings.priority') }}</div>
-          <label class="radio-row">
-            <input type="radio" value="local" v-model="settingsForm.priority" />
-            <span>{{ $t('settings.local') }}</span>
-          </label>
-          <label class="radio-row">
-            <input type="radio" value="server" v-model="settingsForm.priority" />
-            <span>{{ $t('settings.server') }}</span>
-          </label>
-          <label class="radio-row">
-            <input type="radio" value="merge" v-model="settingsForm.priority" />
-            <span>{{ $t('settings.merge') }}</span>
-          </label>
-        </div>
-        <div class="settings-group">
-          <div class="settings-label">{{ $t('settings.recycle') }}</div>
-          <label class="checkbox-row">
-            <input type="checkbox" v-model="settingsForm.recycle" />
-            <span>{{ $t('settings.recycleOn') }}</span>
-          </label>
-          <label class="form-row">
-            <span>{{ $t('settings.recycleDays') }}</span>
-            <input v-model.number="settingsForm.recycleDays" type="number" min="1" max="3650" />
-          </label>
-        </div>
-        <p class="settings-hint">{{ $t('settings.hint') }}</p>
-        <div class="modal-actions">
-          <button class="btn-ghost" @click="settingsShow = false">{{ $t('modal.cancel') }}</button>
-          <button class="btn-primary" @click="saveSettings">{{ $t('modal.save') }}</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 回收站弹窗 -->
-    <div v-if="trashShow" class="mask" @click.self="trashShow = false">
-      <div class="modal">
-        <h2>{{ $t('trash.title') }}</h2>
-        <div class="trash-list">
-          <div v-for="e in trash" :key="e.id" class="trash-item">
-            <div class="trash-main">
-              <div class="title">{{ e.title }}</div>
-              <div class="meta">{{ e.username || '—' }}</div>
-            </div>
-            <div class="ops">
-              <button class="btn-ghost" @click="doRestore(e.id)">{{ $t('trash.restore') }}</button>
-              <button class="btn-danger" @click="doPurge(e.id)">{{ $t('trash.purge') }}</button>
-            </div>
-          </div>
-          <div v-if="trash.length === 0" class="empty">{{ $t('trash.empty') }}</div>
-        </div>
-        <div class="modal-actions">
-          <button class="btn-ghost" @click="trashShow = false">{{ $t('modal.cancel') }}</button>
-          <button class="btn-danger" :disabled="trash.length === 0" @click="doEmptyTrash">{{ $t('trash.emptyTrash') }}</button>
-        </div>
-      </div>
-    </div>
-
     <!-- 删除确认弹窗 -->
     <div v-if="confirmBox" class="mask" @click.self="confirmBox = null">
       <div class="modal modal-confirm">
@@ -342,6 +391,7 @@
 <script>
 import api from './api'
 import { listen } from '@tauri-apps/api/event'
+import { getVersion } from '@tauri-apps/api/app'
 
 function csvEscape(v) {
   v = String(v == null ? '' : v)
@@ -399,11 +449,17 @@ export default {
       toastTimer: null,
       idleTimer: null,
       idleTimeout: 5 * 60 * 1000, // 5 分钟无操作自动锁定
-      settingsShow: false,
+      // 左侧边栏当前页签：passwords / trash / logs / settings / about（无用户管理）
+      tab: 'passwords',
+      // 本机操作日志（client.log，新在前）
+      logs: [],
+      // 客户端版本号（关于页展示）
+      clientVersion: '',
+      // 颜色模式：auto（跟随系统）/ light / dark，循环切换
+      themeMode: localStorage.getItem('theme') || 'auto',
       settingsForm: { autostart: false, autosync: false, priority: 'local', recycle: true, recycleDays: 30 },
       pinSync: false,
       recycleEnabled: true,
-      trashShow: false,
       trash: [],
       confirmBox: null,
       lang: localStorage.getItem('locale') || 'zh-CN'
@@ -433,6 +489,14 @@ export default {
     // 凭据库是否已降级为本地文件（Linux 无桌面密钥环时）
     secretDegraded() {
       return this.secretBackend === 'file'
+    },
+    // 颜色模式图标与提示文案（自动 / 浅色 / 深色 循环）
+    themeIcon() {
+      return this.themeMode === 'light' ? '☀️' : this.themeMode === 'dark' ? '🌙' : '🌗'
+    },
+    themeLabel() {
+      const key = this.themeMode === 'light' ? 'theme.light' : this.themeMode === 'dark' ? 'theme.dark' : 'theme.auto'
+      return this.$t(key)
     }
   },
   watch: {
@@ -441,6 +505,9 @@ export default {
   },
   async mounted() {
     this.setupIdleLock()
+    this.applyTheme()
+    // 关于页展示客户端版本（读 tauri.conf.json 的 version）。
+    getVersion().then((v) => { this.clientVersion = v }).catch(() => {})
     // 从托盘恢复窗口时，同步锁定状态（隐藏到托盘时后端已清除主密钥）
     await listen('window-shown', async () => {
       try {
@@ -548,6 +615,50 @@ export default {
     changeLang() {
       this.$i18n.locale = this.lang
       localStorage.setItem('locale', this.lang)
+    },
+    // ---- 边栏页签与颜色模式 ----
+    switchTab(t) {
+      this.tab = t
+      if (t === 'trash') this.loadTrash()
+      if (t === 'logs') this.loadLogs()
+      if (t === 'settings') this.loadSettings()
+    },
+    // 颜色模式循环切换：自动（跟随系统）→ 浅色 → 深色 → 自动。
+    cycleTheme() {
+      const order = ['auto', 'light', 'dark']
+      const next = order[(order.indexOf(this.themeMode) + 1) % order.length]
+      this.themeMode = next
+      try {
+        localStorage.setItem('theme', next)
+      } catch (e) {
+        /* ignore */
+      }
+      this.applyTheme()
+    },
+    applyTheme() {
+      let resolved = this.themeMode
+      if (resolved === 'auto') {
+        resolved = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+      }
+      document.documentElement.setAttribute('data-theme', resolved)
+    },
+    async loadLogs() {
+      this.error = ''
+      try {
+        this.logs = (await api.ReadLogs(500)) || []
+      } catch (e) {
+        this.error = String(e)
+      }
+    },
+    doClearLogs() {
+      this.askConfirm(this.$t('logs.confirmClear'), async () => {
+        try {
+          await api.ClearLogs()
+          this.logs = []
+        } catch (e) {
+          this.error = String(e)
+        }
+      })
     },
     fieldName(key) {
       return this.$t(key).replace(' *', '')
@@ -958,7 +1069,7 @@ export default {
         this.error = this.errText(e)
       }
     },
-    async openSettings() {
+    async loadSettings() {
       try {
         const s = await api.GetSettings()
         this.settingsForm = {
@@ -980,7 +1091,6 @@ export default {
           /* 读取失败按关闭展示，用户改动时会再次尝试 */
         }
       }
-      this.settingsShow = true
     },
     async changePinSync() {
       try {
@@ -1007,7 +1117,6 @@ export default {
           this.settingsForm.recycleDays
         )
         this.recycleEnabled = this.settingsForm.recycle
-        this.settingsShow = false
         this.msg = this.$t('settings.saved')
         this.autoClearToast('msg')
       } catch (e) {
@@ -1017,11 +1126,10 @@ export default {
     askConfirm(text, onOk) {
       this.confirmBox = { text, onOk }
     },
-    async openTrash() {
+    async loadTrash() {
       this.error = ''
       try {
         this.trash = (await api.ListTrash()) || []
-        this.trashShow = true
       } catch (e) {
         this.error = String(e)
       }
@@ -1098,8 +1206,8 @@ button:disabled {
 }
 .gate-card {
   width: 340px;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
+  background: var(--card);
+  border: 1px solid var(--border);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
   padding: 32px;
   border-radius: 12px;
@@ -1112,7 +1220,7 @@ button:disabled {
   font-size: 24px;
 }
 .sub {
-  color: #6b7280;
+  color: var(--muted);
 }
 .error {
   color: #dc2626;
@@ -1146,9 +1254,9 @@ button:disabled {
   margin: 8px 0;
 }
 .lang-select {
-  background: #eef2f7;
-  color: #1f2937;
-  border: 1px solid #d1d5db;
+  background: var(--chip);
+  color: var(--text);
+  border: 1px solid var(--input-border);
   border-radius: 6px;
   padding: 6px 8px;
   font-size: 13px;
@@ -1163,7 +1271,7 @@ button:disabled {
 }
 .menu-label {
   align-self: center;
-  color: #6b7280;
+  color: var(--muted);
   font-size: 13px;
 }
 .lang-fixed {
@@ -1191,7 +1299,7 @@ button:disabled {
   align-items: center;
 }
 .server-user {
-  color: #6b7280;
+  color: var(--muted);
   font-size: 13px;
   max-width: 160px;
   overflow: hidden;
@@ -1241,10 +1349,10 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: #fff;
+  background: var(--card);
   padding: 12px 16px;
   border-radius: 8px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   transition: border-color 0.15s, background 0.15s;
 }
 /* 仅当可拖拽时给出抓取光标（搜索状态下不启用拖拽） */
@@ -1287,7 +1395,7 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  color: #6b7280;
+  color: var(--muted);
   font-size: 12px;
 }
 .meta-line {
@@ -1297,15 +1405,15 @@ button:disabled {
   flex-wrap: wrap;
 }
 .label {
-  color: #9ca3af;
+  color: var(--faint);
   flex-shrink: 0;
 }
 .item {
   display: flex;
   align-items: center;
   gap: 16px;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
+  background: var(--card);
+  border: 1px solid var(--border);
   padding: 12px 16px;
   border-radius: 8px;
 }
@@ -1319,14 +1427,14 @@ button:disabled {
 .meta {
   display: flex;
   gap: 8px;
-  color: #6b7280;
+  color: var(--muted);
   font-size: 12px;
   margin-top: 4px;
   align-items: center;
   flex-wrap: wrap;
 }
 .tag {
-  background: #eef2f7;
+  background: var(--chip);
   padding: 1px 8px;
   border-radius: 10px;
 }
@@ -1361,14 +1469,14 @@ button:disabled {
   gap: 6px;
 }
 .mini {
-  background: #eef2f7;
-  color: #1f2937;
+  background: var(--chip);
+  color: var(--text);
   padding: 4px 8px;
   font-size: 12px;
 }
 .empty {
   text-align: center;
-  color: #6b7280;
+  color: var(--muted);
   margin-top: 40px;
 }
 .mask {
@@ -1383,8 +1491,8 @@ button:disabled {
   width: 420px;
   max-height: 90%;
   overflow-y: auto;
-  background: #ffffff;
-  border: 1px solid #d1d5db;
+  background: var(--card);
+  border: 1px solid var(--input-border);
   border-radius: 12px;
   padding: 24px;
   display: flex;
@@ -1395,7 +1503,7 @@ button:disabled {
   margin-bottom: 8px;
 }
 .modal label {
-  color: #6b7280;
+  color: var(--muted);
   font-size: 12px;
   margin-top: 6px;
 }
@@ -1420,16 +1528,16 @@ button:disabled {
   align-items: center;
   gap: 8px;
   background: transparent;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--input-border);
   padding: 4px 10px;
   border-radius: 6px;
 }
 .user-trigger:hover {
   opacity: 1;
-  background: #eef2f7;
+  background: var(--chip);
 }
 .caret {
-  color: #6b7280;
+  color: var(--muted);
   font-size: 12px;
 }
 .user-dropdown {
@@ -1437,8 +1545,8 @@ button:disabled {
   top: calc(100% + 6px);
   right: 0;
   min-width: 200px;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   z-index: 5001;
@@ -1447,7 +1555,7 @@ button:disabled {
 .dd-server {
   padding: 8px 12px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--muted);
   border-bottom: 1px solid #eef2f7;
   word-break: break-all;
 }
@@ -1492,7 +1600,7 @@ button:disabled {
   margin-top: 10px;
   padding: 8px 10px;
   background: #f9fafb;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 8px;
 }
 .settings-label {
@@ -1517,7 +1625,7 @@ button:disabled {
 .settings-hint {
   margin-top: 8px;
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--faint);
   line-height: 1.5;
 }
 .server-row {
@@ -1532,7 +1640,7 @@ button:disabled {
   white-space: nowrap;
 }
 .scan-status {
-  color: #6b7280;
+  color: var(--muted);
   font-size: 12px;
 }
 .lan-list {
@@ -1547,8 +1655,8 @@ button:disabled {
   align-items: center;
   gap: 8px;
   text-align: left;
-  background: #eef2f7;
-  color: #1f2937;
+  background: var(--chip);
+  color: var(--text);
   padding: 6px 10px;
   border-radius: 6px;
   font-size: 13px;
@@ -1601,12 +1709,12 @@ button:disabled {
 }
 .allowed-list {
   margin-top: 6px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 6px 10px;
 }
 .allowed-title {
-  color: #6b7280;
+  color: var(--muted);
   font-size: 12px;
   margin-bottom: 4px;
 }
@@ -1626,20 +1734,20 @@ button:disabled {
   white-space: nowrap;
 }
 .fp-box {
-  background: #f3f4f6;
-  border: 1px solid #e5e7eb;
+  background: var(--hover);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 10px;
 }
 .fp-label {
-  color: #6b7280;
+  color: var(--muted);
   font-size: 12px;
   margin-bottom: 4px;
 }
 .fp-value {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
-  color: #111827;
+  color: var(--text);
   word-break: break-all;
   line-height: 1.5;
 }
@@ -1678,8 +1786,8 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
+  background: var(--card);
+  border: 1px solid var(--border);
   padding: 10px 12px;
   border-radius: 8px;
 }
@@ -1694,5 +1802,172 @@ button:disabled {
   font-size: 14px;
   line-height: 1.5;
   word-break: break-all;
+}
+
+/* ---- 左侧边栏布局（对齐服务端后台：152px 宽、页签 + 主题切换/GitHub 页脚） ---- */
+.layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 16px;
+}
+.sidebar {
+  width: 152px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0;
+  border-right: 1px solid var(--border);
+}
+.sidebar button {
+  background: transparent;
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 10px 14px;
+  text-align: left;
+  width: 100%;
+}
+.sidebar button:hover {
+  background: var(--hover);
+}
+.sidebar button.active {
+  color: var(--fnos-primary);
+  background: var(--fnos-primary-light);
+  font-weight: 600;
+}
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-left: 12px;
+}
+/* 用 .sidebar button.theme-toggle 提高优先级，避免被 .sidebar button 的 width:100% 覆盖 */
+.sidebar button.theme-toggle {
+  width: 18px;
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 4px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+}
+.sidebar button.theme-toggle:hover {
+  background: var(--hover);
+  opacity: 1;
+}
+.theme-icon {
+  font-size: 16px;
+}
+.gh-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 36px;
+  border-radius: 4px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.gh-link:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* 非密码页的通用面板：独立滚动，标题行与操作按钮 */
+.panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.panel-title {
+  font-size: 18px;
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.panel-ops {
+  display: flex;
+  gap: 8px;
+}
+.panel-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+.about-line {
+  color: var(--muted);
+  font-size: 13px;
+}
+.about-desc {
+  line-height: 1.7;
+}
+.about-link {
+  color: var(--fnos-primary);
+  text-decoration: none;
+  word-break: break-all;
+}
+.about-link:hover {
+  text-decoration: underline;
+}
+/* 本机日志：等宽字体逐行展示（新在前） */
+.log-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.log-line {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+.log-line code {
+  font-family: 'Consolas', monospace;
+  font-size: 12px;
+  color: var(--text);
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+/* ---- 深色模式补丁：覆盖未变量化的零散颜色 ---- */
+html[data-theme='dark'] .gate-card {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+html[data-theme='dark'] .entry-drop-target {
+  background: var(--fnos-primary-light);
+}
+html[data-theme='dark'] .confirm-text {
+  color: var(--text);
+}
+html[data-theme='dark'] .toast-msg {
+  background: rgba(5, 150, 105, 0.95);
+}
+html[data-theme='dark'] .lang-select {
+  background: var(--chip);
+  color: var(--text);
+  border-color: var(--input-border);
 }
 </style>

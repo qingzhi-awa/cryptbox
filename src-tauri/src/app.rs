@@ -442,6 +442,7 @@ pub fn setup_master(password: String, state: State<'_, AppState>) -> Result<bool
         store::set_meta(db, "verifier", &verifier)?;
     }
     *state.key_lock() = Some(key);
+    crate::clientlog::log("setup_master", "创建主密码库");
     Ok(true)
 }
 
@@ -464,9 +465,11 @@ pub fn unlock(password: String, state: State<'_, AppState>) -> Result<bool, Stri
     };
     let plain = crypto::decrypt_string(&key, &verifier).map_err(|e| e.to_string())?;
     if plain != VERIFIER_PLAIN {
+        crate::clientlog::log("unlock_failed", "主密码错误");
         return Ok(false);
     }
     *state.key_lock() = Some(key);
+    crate::clientlog::log("unlock", "解锁成功");
     Ok(true)
 }
 
@@ -483,6 +486,7 @@ pub fn clear_key(state: &AppState) {
 #[tauri::command]
 pub fn lock(state: State<'_, AppState>) {
     clear_key(&state);
+    crate::clientlog::log("lock", "锁定密码库");
 }
 
 #[tauri::command]
@@ -630,6 +634,7 @@ pub fn export_txt(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<S
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     let list = store::list_entries(db, key.as_bytes())?;
     import_export::export_txt(&path.to_string_lossy(), &list)?;
+    crate::clientlog::log("export_txt", &format!("导出 {} 条 → {}", list.len(), path.to_string_lossy()));
     Ok(path.to_string_lossy().to_string())
 }
 
@@ -643,6 +648,7 @@ pub fn export_csv(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<S
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     let list = store::list_entries(db, key.as_bytes())?;
     import_export::export_csv(&path.to_string_lossy(), &list)?;
+    crate::clientlog::log("export_csv", &format!("导出 {} 条 CSV → {}", list.len(), path.to_string_lossy()));
     Ok(path.to_string_lossy().to_string())
 }
 
@@ -660,6 +666,7 @@ pub fn import_csv(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<i
         store::save_entry(db, key.as_bytes(), e)?;
         count += 1;
     }
+    crate::clientlog::log("import_csv", &format!("导入 {} 条（CSV）", count));
     Ok(count)
 }
 
@@ -677,6 +684,7 @@ pub fn import_txt(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<i
         store::save_entry(db, key.as_bytes(), e)?;
         count += 1;
     }
+    crate::clientlog::log("import_txt", &format!("导入 {} 条（TXT）", count));
     Ok(count)
 }
 
@@ -740,7 +748,14 @@ pub fn sync_register(
     let vault_key_enc = crypto::encrypt_bytes(&master_key, &vault_key)?;
 
     let c = client_for(&server, &pinned);
-    let r = c.register(&username, &password, &email, &code, &vault_key_enc, &kdf_salt)?;
+    let r = match c.register(&username, &password, &email, &code, &vault_key_enc, &kdf_salt) {
+        Ok(r) => r,
+        Err(e) => {
+            crate::clientlog::log("register_failed", &format!("注册失败 {}@{}：{}", username, server, e));
+            return Err(e);
+        }
+    };
+    crate::clientlog::log("register", &format!("注册成功 {}@{}", username, server));
     let guard = state.db_lock();
     {
         let db = guard.as_ref().ok_or("数据库未初始化")?;
@@ -781,7 +796,14 @@ pub fn sync_login(
         ensure_server_allowed(&app, db, &server)?
     };
     let c = client_for(&server, &pinned);
-    let r = c.login(&username, &password)?;
+    let r = match c.login(&username, &password) {
+        Ok(r) => r,
+        Err(e) => {
+            crate::clientlog::log("login_failed", &format!("登录失败 {}@{}：{}", username, server, e));
+            return Err(e);
+        }
+    };
+    crate::clientlog::log("login", &format!("登录成功 {}@{}", username, server));
     // 派生盐优先取服务端下发的随机盐；历史账号无盐时回退用用户名，保持向后兼容。
     let salt = if r.kdf_salt.is_empty() {
         username.clone()
@@ -854,6 +876,7 @@ pub fn session_info(state: State<'_, AppState>) -> HashMap<String, String> {
 #[tauri::command]
 pub fn clear_session(state: State<'_, AppState>) -> HashMap<String, String> {
     clear_session_token(&state);
+    crate::clientlog::log("logout", "退出登录");
     session_info(state)
 }
 
@@ -967,7 +990,12 @@ pub fn push_vault(
         (encrypt_entries(&list, &vault_key)?, pinned)
     };
     let c = client_for(&server, &pinned).with_token(&token);
-    c.push(&encrypted)
+    let res = c.push(&encrypted);
+    match &res {
+        Ok(_) => crate::clientlog::log("push", "上传密码库成功"),
+        Err(e) => crate::clientlog::log("push_failed", &format!("上传失败：{}", e)),
+    }
+    res
 }
 
 #[tauri::command]
@@ -984,13 +1012,20 @@ pub fn pull_vault(
         ensure_server_allowed(&app, db, &server)?
     };
     let c = client_for(&server, &pinned).with_token(&token);
-    let (list, pin_sync) = c.pull()?;
+    let (list, pin_sync) = match c.pull() {
+        Ok(v) => v,
+        Err(e) => {
+            crate::clientlog::log("pull_failed", &format!("下载失败：{}", e));
+            return Err(e);
+        }
+    };
     let guard = state.db_lock();
     let db = guard.as_ref().ok_or("数据库未初始化")?;
     let vault_key = read_vault_key(&state, db)?;
     let decrypted = decrypt_entries(&list, &vault_key)?;
     // 置顶同步开启时采纳服务端置顶；关闭时保留本机置顶（pull 后快照恢复）。
     store::replace_entries(db, key.as_bytes(), &decrypted, pin_sync)?;
+    crate::clientlog::log("pull", &format!("下载 {} 条", decrypted.len()));
     Ok(decrypted.len() as i64)
 }
 
@@ -1025,7 +1060,13 @@ pub fn merge_vault(
         let encrypted = encrypt_entries(&merged, &vault_key)?;
         (merged.len() as i64, encrypted)
     };
-    c.push(&encrypted)?;
+    match c.push(&encrypted) {
+        Ok(_) => crate::clientlog::log("merge", &format!("双向合并完成，共 {} 条", merged)),
+        Err(e) => {
+            crate::clientlog::log("merge_failed", &format!("合并上传失败：{}", e));
+            return Err(e);
+        }
+    };
     Ok(merged)
 }
 
@@ -1151,6 +1192,7 @@ pub fn reset_vault_remote(
     };
     let c = client_for(&server, &pinned);
     let r = c.login(&username, &password)?;
+    crate::clientlog::log("reset_vault", &format!("清空重建密码库 {}@{}", username, server));
     store_session(&state, &r.token);
     c.delete_vault()?;
 

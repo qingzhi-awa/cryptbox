@@ -87,5 +87,21 @@ export default {
     purged: 'Endgültig gelöscht',
     emptied: '{n} Einträge geleert'
   },
-  lang: { label: 'Sprache', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' }
+  lang: { label: 'Sprache', zhCN: '简体中文', zhTW: '繁體中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch', es: 'Español', ru: 'Русский', pt: 'Português' },
+  tabs: { passwords: 'Passwörter', trash: 'Papierkorb', logs: 'Protokoll', settings: 'Einstellungen', about: 'Über' },
+  theme: { auto: 'Farbmodus: Auto', light: 'Farbmodus: Hell', dark: 'Farbmodus: Dunkel' },
+  logs: {
+    title: 'Lokales Protokoll',
+    hint: 'Zeichnet nur wichtige Aktionen dieses Clients auf (Entsperren / Import / Export / Synchronisierung). Wird nie hochgeladen.',
+    refresh: 'Aktualisieren',
+    clear: 'Protokoll leeren',
+    confirmClear: 'Lokales Protokoll wirklich leeren?',
+    empty: 'Keine Einträge'
+  },
+  about: {
+    title: 'Über',
+    version: 'Version',
+    github: 'GitHub-Repository',
+    desc: 'CryPtBox — Ende-zu-Ende-verschlüsselter Passwort-Manager: Der Tresor wird vor der Synchronisierung lokal verschlüsselt; der Server kann niemals Klartext lesen.'
+  },
 }
