@@ -121,6 +121,6 @@ export default {
     title: 'About',
     version: 'Version',
     github: 'GitHub repository',
-    desc: 'CryPtBox — an end-to-end encrypted password manager: your vault is encrypted locally before syncing; the server can never read plaintext.'
+    desc: 'CryPtBox — an end-to-end encrypted password manager'
   },
 }

@@ -102,6 +102,6 @@ export default {
     title: 'Acerca de',
     version: 'Versión',
     github: 'Repositorio de GitHub',
-    desc: 'CryPtBox — gestor de contraseñas con cifrado de extremo a extremo: la bóveda se cifra localmente antes de sincronizar; el servidor nunca puede leer texto en claro.'
+    desc: 'CryPtBox — gestor de contraseñas con cifrado de extremo a extremo'
   },
 }

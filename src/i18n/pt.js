@@ -102,6 +102,6 @@ export default {
     title: 'Sobre',
     version: 'Versão',
     github: 'Repositório no GitHub',
-    desc: 'CryPtBox — gerenciador de senhas com criptografia de ponta a ponta: o cofre é criptografado localmente antes da sincronização; o servidor nunca lê texto puro.'
+    desc: 'CryPtBox — gerenciador de senhas com criptografia de ponta a ponta'
   },
 }

@@ -102,6 +102,6 @@ export default {
     title: 'À propos',
     version: 'Version',
     github: 'Dépôt GitHub',
-    desc: 'CryPtBox — gestionnaire de mots de passe à chiffrement de bout en bout : le coffre est chiffré localement avant synchronisation ; le serveur ne peut jamais lire le texte en clair.'
+    desc: 'CryPtBox — gestionnaire de mots de passe à chiffrement de bout en bout'
   },
 }

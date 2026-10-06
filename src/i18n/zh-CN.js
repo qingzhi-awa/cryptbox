@@ -126,6 +126,6 @@ export default {
     title: '关于',
     version: '版本',
     github: 'GitHub 开源地址',
-    desc: '密匣 — 端到端加密的密码管理器：密码库在本机加密后才同步，服务器无法读取任何明文。'
+    desc: '密匣 — 端到端加密的密码管理器'
   },
 }

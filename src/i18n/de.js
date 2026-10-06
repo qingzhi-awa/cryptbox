@@ -102,6 +102,6 @@ export default {
     title: 'Über',
     version: 'Version',
     github: 'GitHub-Repository',
-    desc: 'CryPtBox — Ende-zu-Ende-verschlüsselter Passwort-Manager: Der Tresor wird vor der Synchronisierung lokal verschlüsselt; der Server kann niemals Klartext lesen.'
+    desc: 'CryPtBox — Ende-zu-Ende-verschlüsselter Passwort-Manager'
   },
 }

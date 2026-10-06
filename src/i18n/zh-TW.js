@@ -103,6 +103,6 @@ export default {
     title: '關於',
     version: '版本',
     github: 'GitHub 開源地址',
-    desc: '密匣 — 端對端加密的密碼管理器：密碼庫在本機加密後才同步，伺服器無法讀取任何明文。'
+    desc: '密匣 — 端對端加密的密碼管理器'
   },
 }
