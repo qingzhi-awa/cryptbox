@@ -1289,30 +1289,24 @@ pub fn save_settings(
 /// 用系统默认浏览器打开外部链接（关于页 GitHub / 官网入口）。
 ///
 /// WebView2 内 `<a target="_blank">` 默认不弹窗，必须经宿主进程代开。
-/// 安全校验：仅放行 http/https 且不含控制字符与引号类字符，杜绝参数注入；
-/// 经 `Command::new` 直接传参（不经 shell），`explorer` 会把 URL 交给默认浏览器。
+/// 经 `Command::new` 直接传参（不经 shell），`explorer` 会把 URL 交给默认浏览器；
+/// 但仍先做严格校验（见 [`validate_external_url`]），纵深防御。
 #[tauri::command]
 pub fn open_external(url: String) -> Result<(), String> {
-    let url = url.trim();
-    if !(url.starts_with("https://") || url.starts_with("http://")) {
-        return Err("仅允许打开 http/https 链接".into());
-    }
-    if url.chars().any(|ch| ch.is_control() || matches!(ch, '"' | '\'' | '`' | '<' | '>')) {
-        return Err("链接含非法字符".into());
-    }
+    validate_external_url(&url)?;
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("explorer").arg(url).spawn().map_err(|e| e.to_string())?;
+        std::process::Command::new("explorer").arg(url.trim()).spawn().map_err(|e| e.to_string())?;
         Ok(())
     }
     #[cfg(target_os = "macos")]
     {
-        std::process::Command::new("open").arg(url).spawn().map_err(|e| e.to_string())?;
+        std::process::Command::new("open").arg(url.trim()).spawn().map_err(|e| e.to_string())?;
         Ok(())
     }
     #[cfg(target_os = "linux")]
     {
-        std::process::Command::new("xdg-open").arg(url).spawn().map_err(|e| e.to_string())?;
+        std::process::Command::new("xdg-open").arg(url.trim()).spawn().map_err(|e| e.to_string())?;
         Ok(())
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
@@ -1320,6 +1314,21 @@ pub fn open_external(url: String) -> Result<(), String> {
         let _ = url;
         Err("当前平台不支持打开外部链接".into())
     }
+}
+
+/// 外链 URL 白名单校验（纯函数，便于单元测试）：
+///   · 仅放行 http/https 协议——拦掉 file:（读本地文件）、javascript:/data:（WebView 上下文执行）、
+///     ms-msdt:/search-ms:（Windows 协议处理器历史漏洞面）、smb:（网络共享探测）等；
+///   · 拒绝控制字符（含 CRLF——防日志/参数拆行）与引号类字符（防参数包裹逃逸）。
+pub fn validate_external_url(url: &str) -> Result<(), String> {
+    let u = url.trim();
+    if !(u.starts_with("https://") || u.starts_with("http://")) {
+        return Err("仅允许打开 http/https 链接".into());
+    }
+    if u.chars().any(|ch| ch.is_control() || matches!(ch, '"' | '\'' | '`' | '<' | '>')) {
+        return Err("链接含非法字符".into());
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1372,5 +1381,54 @@ mod tests {
         // 显式 http:// 仍保留明文（知情降级）。
         let plain = sync::normalize_server_url("http://192.168.1.5:5201");
         assert!(!sync::pinning::is_https(&plain));
+    }
+
+    // ---------- open_external 外链白名单（攻击性用例） ----------
+
+    #[test]
+    fn external_url_allows_http_https_only() {
+        assert!(validate_external_url("https://github.com/qingzhi-awa/cryptbox").is_ok());
+        assert!(validate_external_url("http://cryptbox.fnosp.com").is_ok());
+        assert!(validate_external_url("  https://x.example  ").is_ok()); // 容忍首尾空白
+    }
+
+    #[test]
+    fn external_url_rejects_dangerous_schemes() {
+        for u in [
+            "javascript:alert(1)",
+            "file:///C:/Windows/system32/cmd.exe",
+            "data:text/html,<script>alert(1)</script>",
+            "ms-msdt:MS-SUPPORT",           // MSDT 协议处理器（Follina 类）
+            "search-ms:query=evil",         // 协议处理器拉起资源管理器
+            "SMB://attacker/share",         // 大写协议名不得绕过前缀判断
+            "HTTPS://evil.example\x00real", // NUL 截断伪装
+            "https:/\\evil.example",        // 缺协议分隔符
+            "//evil.example",               // 协议相对
+            "explorer https://x",
+            "",
+            "   ",
+        ] {
+            assert!(validate_external_url(u).is_err(), "应拒绝: {u:?}");
+        }
+    }
+
+    #[test]
+    fn external_url_rejects_injection_characters() {
+        for u in [
+            "https://a.example/\"--no-warn\",", // 引号包裹逃逸尝试
+            "https://a.example/'--evil",
+            "https://a.example/`calc",
+            "https://a.example/<script>",
+            "https://a.example/>\">x",
+            "https://a.example/?a=1\r\nX-Inject: 1", // CRLF 注入
+            "https://a.example/?a=1\nb=2",
+            "https://a.example/?a=\u{0}b",
+        ] {
+            assert!(validate_external_url(u).is_err(), "应拒绝: {u:?}");
+        }
+        // 普通合法 URL 必须放行：& 与百分号编码均为合法字符，且 Command 直传
+        // 参数不经 shell 解析，& 不会被解释为命令分隔符。
+        assert!(validate_external_url("https://a.example/?x=1&cmd=del").is_ok());
+        assert!(validate_external_url("https://a.example/?q=%E5%AF%86%E5%8C%A3&page=2").is_ok());
     }
 }
