@@ -119,6 +119,9 @@ export default {
   },
   about: {
     title: 'About',
+    author: 'Author',
+    publisher: 'Publisher',
+    website: 'Website',
     version: 'Version',
     github: 'GitHub repository',
     desc: 'CryPtBox — an end-to-end encrypted password manager'

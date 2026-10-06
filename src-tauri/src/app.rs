@@ -1286,6 +1286,42 @@ pub fn save_settings(
     settings::save_settings(db, autostart, autosync, &priority, recycle, recycle_days, &app)
 }
 
+/// 用系统默认浏览器打开外部链接（关于页 GitHub / 官网入口）。
+///
+/// WebView2 内 `<a target="_blank">` 默认不弹窗，必须经宿主进程代开。
+/// 安全校验：仅放行 http/https 且不含控制字符与引号类字符，杜绝参数注入；
+/// 经 `Command::new` 直接传参（不经 shell），`explorer` 会把 URL 交给默认浏览器。
+#[tauri::command]
+pub fn open_external(url: String) -> Result<(), String> {
+    let url = url.trim();
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("仅允许打开 http/https 链接".into());
+    }
+    if url.chars().any(|ch| ch.is_control() || matches!(ch, '"' | '\'' | '`' | '<' | '>')) {
+        return Err("链接含非法字符".into());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer").arg(url).spawn().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open").arg(url).spawn().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open").arg(url).spawn().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        let _ = url;
+        Err("当前平台不支持打开外部链接".into())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

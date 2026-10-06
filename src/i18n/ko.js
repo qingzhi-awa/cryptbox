@@ -100,6 +100,9 @@ export default {
   },
   about: {
     title: '정보',
+    author: '작성자',
+    publisher: '배포자',
+    website: '웹사이트',
     version: '버전',
     github: 'GitHub 저장소',
     desc: '密匣 — 종단 간 암호화 비밀번호 관리자'

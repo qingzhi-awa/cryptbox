@@ -100,6 +100,9 @@ export default {
   },
   about: {
     title: 'Sobre',
+    author: 'Autor',
+    publisher: 'Editor',
+    website: 'Site',
     version: 'Versão',
     github: 'Repositório no GitHub',
     desc: 'CryPtBox — gerenciador de senhas com criptografia de ponta a ponta'

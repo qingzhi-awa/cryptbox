@@ -69,6 +69,7 @@ pub fn run() {
             app::get_secret_backend,
             app::get_settings,
             app::save_settings,
+            app::open_external,
             clientlog::read_client_logs,
             clientlog::clear_client_logs,
         ])

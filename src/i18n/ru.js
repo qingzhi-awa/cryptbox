@@ -100,6 +100,9 @@ export default {
   },
   about: {
     title: 'О программе',
+    author: 'Автор',
+    publisher: 'Издатель',
+    website: 'Сайт',
     version: 'Версия',
     github: 'Репозиторий GitHub',
     desc: 'CryPtBox — менеджер паролей со сквозным шифрованием'

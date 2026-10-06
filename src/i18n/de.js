@@ -100,6 +100,9 @@ export default {
   },
   about: {
     title: 'Über',
+    author: 'Autor',
+    publisher: 'Herausgeber',
+    website: 'Webseite',
     version: 'Version',
     github: 'GitHub-Repository',
     desc: 'CryPtBox — Ende-zu-Ende-verschlüsselter Passwort-Manager'

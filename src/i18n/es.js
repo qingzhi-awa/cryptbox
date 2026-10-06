@@ -100,6 +100,9 @@ export default {
   },
   about: {
     title: 'Acerca de',
+    author: 'Autor',
+    publisher: 'Editor',
+    website: 'Sitio web',
     version: 'Versión',
     github: 'Repositorio de GitHub',
     desc: 'CryPtBox — gestor de contraseñas con cifrado de extremo a extremo'

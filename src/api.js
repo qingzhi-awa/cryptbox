@@ -75,5 +75,7 @@ export default {
   SetPinSync: (server, enabled) => invoke('set_pin_sync', { server, enabled }),
   // 本地操作日志（client.log）：读取最近 N 条（新在前）与清空。
   ReadLogs: (limit) => invoke('read_client_logs', { limit }),
-  ClearLogs: () => invoke('clear_client_logs')
+  ClearLogs: () => invoke('clear_client_logs'),
+  // 用系统默认浏览器打开外部链接（关于页 / GitHub 入口）。
+  OpenExternal: (url) => invoke('open_external', { url })
 }

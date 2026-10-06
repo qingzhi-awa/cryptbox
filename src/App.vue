@@ -69,8 +69,7 @@
           <a
             class="gh-link"
             href="https://github.com/qingzhi-awa/cryptbox"
-            target="_blank"
-            rel="noopener"
+            @click.prevent="openExternal('https://github.com/qingzhi-awa/cryptbox')"
             :title="$t('about.github')"
           >
             <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true">
@@ -172,7 +171,12 @@
 
         <!-- 回收站 -->
         <div v-else-if="tab === 'trash'" class="panel">
-          <h2 class="panel-title">{{ $t('trash.title') }}</h2>
+          <div class="panel-head">
+            <h2 class="panel-title">{{ $t('trash.title') }}</h2>
+            <div class="panel-ops">
+              <button class="btn-danger" :disabled="trash.length === 0" @click="doEmptyTrash">{{ $t('trash.emptyTrash') }}</button>
+            </div>
+          </div>
           <div class="trash-list">
             <div v-for="e in trash" :key="e.id" class="trash-item">
               <div class="trash-main">
@@ -185,9 +189,6 @@
               </div>
             </div>
             <div v-if="trash.length === 0" class="empty">{{ $t('trash.empty') }}</div>
-          </div>
-          <div class="modal-actions">
-            <button class="btn-danger" :disabled="trash.length === 0" @click="doEmptyTrash">{{ $t('trash.emptyTrash') }}</button>
           </div>
         </div>
 
@@ -256,12 +257,21 @@
 
         <!-- 关于 -->
         <div v-else-if="tab === 'about'" class="panel">
-          <h2 class="panel-title">{{ $t('about.title') }}</h2>
-          <p class="about-line">{{ $t('app.title') }} {{ $t('about.version') }}：{{ clientVersion || '—' }}</p>
-          <p class="about-line">
-            {{ $t('about.github') }}：<a class="about-link" href="https://github.com/qingzhi-awa/cryptbox" target="_blank" rel="noopener">github.com/qingzhi-awa/cryptbox</a>
-          </p>
-          <p class="about-line about-desc">{{ $t('about.desc') }}</p>
+          <div class="about-card">
+            <div class="about-head">
+              <img src="/icon.png" class="about-logo" alt="CryPtBox" />
+              <div class="about-info">
+                <p class="about-title">CryPtBox 密匣 - 密码管理器桌面端</p>
+                <p class="about-line">{{ $t('about.author') }}：CryPtBox</p>
+                <p class="about-line">{{ $t('about.publisher') }}：青芷</p>
+                <p class="about-line">{{ $t('about.version') }}：v{{ clientVersion || '—' }}</p>
+                <p class="about-line">{{ $t('about.website') }}：<a class="about-link" href="https://cryptbox.fnosp.com" @click.prevent="openExternal('https://cryptbox.fnosp.com')">cryptbox.fnosp.com</a></p>
+                <p class="about-line">{{ $t('about.github') }}：<a class="about-link" href="https://github.com/qingzhi-awa/cryptbox" @click.prevent="openExternal('https://github.com/qingzhi-awa/cryptbox')">github.com/qingzhi-awa/cryptbox</a></p>
+              </div>
+            </div>
+            <div class="about-divider" />
+            <p class="about-line about-desc">{{ $t('about.desc') }}</p>
+          </div>
         </div>
       </div>
     </div>
@@ -641,6 +651,14 @@ export default {
         resolved = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
       }
       document.documentElement.setAttribute('data-theme', resolved)
+    },
+    async openExternal(url) {
+      // 交给宿主进程用系统默认浏览器打开（WebView 内 target=_blank 不生效）。
+      try {
+        await api.OpenExternal(url)
+      } catch (e) {
+        this.error = String(e)
+      }
     },
     async loadLogs() {
       this.error = ''
@@ -1913,6 +1931,38 @@ button:disabled {
 .panel-hint {
   color: var(--muted);
   font-size: 12px;
+}
+/* 关于页卡片：对齐服务端后台（logo + 信息行 + 分隔线） */
+.about-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  max-width: 560px;
+}
+.about-head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.about-logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  flex: none;
+}
+.about-info {
+  min-width: 0;
+}
+.about-title {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+.about-divider {
+  border-top: 1px solid var(--border);
+  margin: 14px 0;
 }
 .about-line {
   color: var(--muted);

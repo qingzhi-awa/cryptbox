@@ -101,6 +101,9 @@ export default {
   },
   about: {
     title: '關於',
+    author: '作者',
+    publisher: '發布者',
+    website: '官網連結',
     version: '版本',
     github: 'GitHub 開源地址',
     desc: '密匣 — 端對端加密的密碼管理器'

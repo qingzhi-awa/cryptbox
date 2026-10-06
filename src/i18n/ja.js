@@ -100,6 +100,9 @@ export default {
   },
   about: {
     title: 'このアプリについて',
+    author: '作者',
+    publisher: '公開者',
+    website: '公式サイト',
     version: 'バージョン',
     github: 'GitHub リポジトリ',
     desc: '密匣（CryPtBox）— エンドツーエンド暗号化のパスワードマネージャー'
