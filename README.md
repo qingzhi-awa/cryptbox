@@ -54,9 +54,9 @@
 
 | 平台 | 文件 | 说明 |
 |------|------|------|
-| Windows x64 | `CryPtBox_0.2.3_x64-setup.exe` | NSIS 安装包 |
-| Windows x64 | `CryPtBox_0.2.3_x64_zh-CN.msi` | MSI 安装包 |
-| Windows x64 | `cryptbox.exe` | 绿色单文件（可配合 `portable.flag` 便携使用） |
+| Windows x64 | `CryPtBox_版本号_x64-setup.exe` | NSIS 安装包 |
+| Windows x64 | `CryPtBox_版本号_x64_zh-CN.msi` | MSI 安装包 |
+| Windows x64 | `CryPtBox_版本号_x64.exe` | 绿色单文件（可配合 `portable.flag` 便携使用） |
 
 > 正式版见 [Releases](../../releases)。macOS / Linux 需在对应平台执行 `npx tauri build` 构建。
 
